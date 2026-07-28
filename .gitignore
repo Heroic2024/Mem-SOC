@@ -1,0 +1,26 @@
+# pycache
+__pycache__/
+
+# Python bytecode
+*.py[cod]
+
+# environment variables
+.env
+
+# virtual environment
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# node_modules
+node_modules/
+
+# log files, csv files, and other temporary files
+*.log
+*.csv
+*.tmp
+
+# model files
+*.h5
+*.pkl
