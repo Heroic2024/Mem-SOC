@@ -21,6 +21,8 @@ node_modules/
 *.csv
 *.tmp
 *.zip
+
 # model files
 *.h5
 *.pkl
+*.parquet
