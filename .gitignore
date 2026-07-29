@@ -20,7 +20,7 @@ node_modules/
 *.log
 *.csv
 *.tmp
-
+*.zip
 # model files
 *.h5
 *.pkl
