@@ -1,14 +1,14 @@
 # 06 — Risks & Limitations of the Memory Layer
 
-> Scoped to failure modes originating in Layer 3. Project-wide risks (dataset age, frozen detector, ground-truth oversimplification) are in [`CLAUDE.md`](../../CLAUDE.md) §8 and are not restated here except where the memory layer changes their character.
+> Scoped to failure modes originating in Layer 3. Project-wide risks (dataset age, frozen detector, ground-truth oversimplification) are in [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8 and are not restated here except where the memory layer changes their character.
 >
-> [`CLAUDE.md`](../../CLAUDE.md) §131: *"These must be documented, not buried. They are part of the honest contribution."*
+> [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8: *"These must be documented, not buried. They are part of the honest contribution."*
 
 ---
 
 ## R1 — Error propagation
 
-**Severity: critical.** [`CLAUDE.md`](../../CLAUDE.md) §133 — "the single most important failure mode."
+**Severity: critical.** [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8 — "the single most important failure mode."
 
 A mis-triaged case, once stored, becomes retrievable precedent. Similar alerts retrieve it, the LLM anchors on it, and the error repeats — with each repetition writing another confirming instance, so later alerts see *multiple consistent* precedents for a wrong verdict. The failure compounds rather than merely persisting.
 
@@ -23,7 +23,7 @@ A mis-triaged case, once stored, becomes retrievable precedent. Similar alerts r
 
 ## R2 — Cold start
 
-**Severity: high — affects every headline number.** [`CLAUDE.md`](../../CLAUDE.md) §134.
+**Severity: high — affects every headline number.** [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8.
 
 Memory begins empty. The first *n* alerts get no precedent and are, by construction, Arm A. Aggregate metrics therefore blend a memoryless phase with a memory-augmented one and understate steady-state performance by an amount that depends entirely on run length.
 
@@ -37,7 +37,7 @@ Memory begins empty. The first *n* alerts get no precedent and are, by construct
 
 ## R3 — Retrieval noise
 
-**Severity: high.** [`CLAUDE.md`](../../CLAUDE.md) §135.
+**Severity: high.** [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8.
 
 Poorly chosen `k` or an absent threshold injects irrelevant "precedent," which can make Arm B **worse** than Arm A. Cosine similarity between rendered flow descriptions measures textual resemblance, not security relevance — two flows can render similarly and mean entirely different things.
 
@@ -49,34 +49,37 @@ Poorly chosen `k` or an absent threshold injects irrelevant "precedent," which c
 
 ## R4 — Embedding-model mismatch
 
-**Severity: critical, silent.** [`CLAUDE.md`](../../CLAUDE.md) §68 — "non-negotiable."
+**Severity: critical, silent.** [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §4 (Layer 3) calls the shared model "non-negotiable"; [`CLAUDE.md`](../../CLAUDE.md) makes it a protected component.
 
 If write-path and read-path embeddings come from different models, versions, or normalization settings, similarity is meaningless. Nothing raises. Retrieval keeps returning results, they are simply wrong, and the run looks healthy.
 
 - **Mitigation:** one model instance per process, shared by construction ([05 §Determinism](./05-configuration.md#determinism)); reference-corpus hash checked at startup; exact package pins.
 - **Adjacent trap:** `schema_version`. Same model, different text template, same silent corruption. The store must refuse mixed versions ([02 §Schema versioning](./02-case-schema.md#schema-versioning)).
+- **Consequence of the freeze:** because the model may never be swapped after lock, a model that turns out to be a poor fit cannot be quietly replaced mid-project. It requires explicit approval and re-rendering every stored case into a new store. That makes the Phase 0 measurement in [R5](#r5--silent-truncation-at-the-token-limit) load-bearing rather than optional.
 
 ---
 
 ## R5 — Silent truncation at the token limit
 
-**Severity: high, silent, and specific to this dataset.**
+**Severity: high, silent.**
 
-`all-MiniLM-L6-v2` truncates at 256 word-piece tokens. A rendered case that exceeds it produces a valid 384-dim vector computed from partial text — the tail features contribute nothing, and which features are lost varies with the width of the numeric values. Two otherwise-similar flows can lose different fields.
+The candidate embedding model truncates at a fixed sequence length (256 word-piece tokens for `all-MiniLM-L6-v2`). A rendered case that exceeds it produces a valid vector computed from partial text — the tail features contribute nothing, and which features are lost varies with the width of the numeric values. Two otherwise-similar flows can lose different fields.
 
-- **Detection:** token-length distribution measured in Phase 0; a hard assertion in `CaseRenderer`.
-- **Mitigation:** template sized with headroom, or a 512-token model ([05 §If the template will not fit](./05-configuration.md#if-the-template-will-not-fit)).
+- **Detection:** token-length distribution measured in Phase 0, under the final template; a hard assertion in `CaseRenderer`.
+- **Mitigation:** template sized with headroom, **decided before the model is locked** ([05 §Embedding model](./05-configuration.md#embedding-model), [OQ-8](./07-open-questions.md#oq-8--which-embedding-model-is-locked-for-phase-2)). After the lock the cheap fix is unavailable — see R4.
 - **Report:** the observed p50/p99 token length under the final template.
 
 ---
 
 ## R6 — Near-duplicate saturation
 
-**Severity: medium-high. Expected, not hypothetical.**
+**Severity: medium-high, and stream-dependent.**
 
-CICIDS2017 attack bursts contain thousands of near-identical flows. Under `write_all`, memory fills with them, and top-*k* returns *k* copies of one case. Effective *k* collapses toward 1, prompt tokens are spent on redundancy, and — worse — a wrong verdict inside a burst is retrieved *k* times, amplifying R1.
+If the alert stream contains bursts of near-identical flows, memory fills with them under `write_all`, and top-*k* returns several copies of one case. Effective *k* collapses toward 1, prompt tokens are spent on redundancy, and — worse — a wrong verdict inside a burst is retrieved repeatedly, amplifying R1.
 
-- **Detection:** mean pairwise similarity within retrieved sets; distinct `flow_id` count per retrieval.
+How severe this is depends on how Layer 1 constructs the stream, which is out of scope for these docs. The memory layer therefore **measures it rather than assuming either way**.
+
+- **Detection:** mean pairwise similarity within retrieved sets; distinct-flow count per retrieval.
 - **Mitigation:** diversity cap in the read path ([04 §Near-duplicate saturation](./04-read-path.md#near-duplicate-saturation)). Not on write — write-side dedup would erase the volume information that makes a flood identifiable as a flood.
 - **Report:** saturation statistics with and without the diversity constraint.
 
@@ -89,6 +92,7 @@ CICIDS2017 attack bursts contain thousands of near-identical flows. Under `write
 Sentence transformers are trained on natural language. Rendering flow statistics as text and embedding them is a pragmatic choice, not a principled one: the model has no notion that `412 pkt/s` and `408 pkt/s` are near-identical while `412` and `4120` are an order of magnitude apart. Digit-level tokenization gives only a loose approximation of numeric proximity.
 
 - **Consequence:** similarity is driven substantially by categorical and lexical fields (protocol name, port name, detector label) and by *formatting* of the numbers, more than by their magnitudes.
+- **Aggravating factor:** if Phase 0 preprocessing drops identity columns, those categorical anchors disappear and the embedding becomes almost purely numeric — the worst case for this approach. See [02 §The Layer 2 input contract](./02-case-schema.md#the-layer-2-input-contract) and [OQ-9](./07-open-questions.md#oq-9--what-does-layer-2-emit).
 - **Mitigation:** deliberate rendering rules — resolved protocol/port names, fixed precision, human-readable magnitudes ([02 §Rendering rules](./02-case-schema.md#rendering-rules)).
 - **Honest framing for the writeup:** this evaluates *a* reasonable memory-layer implementation, not the best achievable one. A hybrid retriever over scaled numeric features would likely retrieve better — and would also be a second variable, which is why it is out of scope here.
 - **Report:** state this as a limitation on the generality of the result.
@@ -97,11 +101,11 @@ Sentence transformers are trained on natural language. Rendering flow statistics
 
 ## R8 — ChromaDB scaling characteristics
 
-**Severity: low for this project. Documented because [`CLAUDE.md`](../../CLAUDE.md) §98 requires it.**
+**Severity: low for this project. Documented because [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §6 requires it.**
 
 Documented limitations: high memory usage at scale, due to reliance on in-memory operations; limited scalability for workloads in the millions of vectors, where Pinecone, Weaviate, or Milvus perform better.
 
-- **Impact here: none.** A controlled comparison over a fixed dataset produces thousands to low tens of thousands of vectors, far inside Chroma's comfortable range, and its Apache-2.0 licence, disk persistence, metadata filtering, and fast setup are the right trade for a research prototype ([`CLAUDE.md`](../../CLAUDE.md) §93).
+- **Impact here: none.** A controlled comparison over a fixed dataset produces thousands to low tens of thousands of vectors, far inside Chroma's comfortable range, and its Apache-2.0 licence, disk persistence, metadata filtering, and fast setup are the right trade for a research prototype ([`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §6).
 - **Where it would matter:** production SOC volumes. Real deployments generate millions of alerts per year, and at that scale both limitations become live and the choice warrants re-evaluation.
 - **Design consequence already taken:** rationales and full feature vectors live in the sidecar, not in Chroma metadata, keeping the resident footprint proportional to what is actually filtered on ([02 §Part 3](./02-case-schema.md#part-3--sidecar-record)).
 
@@ -113,7 +117,7 @@ Documented limitations: high memory usage at scale, due to reliance on in-memory
 
 The store is stateful, so Arm B's output depends on its starting state as much as on the alert sequence. Re-running against a populated store makes alert #1 retrieve precedent it could not have had, and the run is silently non-comparable.
 
-- **Mitigation:** run-scoped store paths; declared `initial_state`; automated `reset()`; hard failure when a scored run starts against an undeclared non-empty store ([01 §State lifecycle](./01-architecture.md#state-lifecycle-and-reproducibility)).
+- **Mitigation:** run-scoped store directories, created fresh per run and never cleared; declared `initial_state`; a hard abort if a run's directory already exists ([01 §Store lifecycle](./01-architecture.md#store-lifecycle-and-reproducibility)). This satisfies the protected-component rule and removes the failure mode at the same time — there is no shared store to accidentally inherit.
 - **Report:** `initial_state`, start count, end count, and case-ID hash in every manifest.
 
 ---
@@ -122,16 +126,27 @@ The store is stateful, so Arm B's output depends on its starting state as much a
 
 **Severity: low, but it distorts a reported number.**
 
-The token-and-latency overhead metric ([`CLAUDE.md`](../../CLAUDE.md) §121) attributes cost to the memory layer. If Arm A loads the embedding model, opens a store handle, or pays any part of the retrieval path, the measured overhead is understated and the comparison flatters Arm B.
+The token-and-latency overhead metric ([`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §7 Phase 4) attributes cost to the memory layer. If Arm A loads the embedding model, opens a store handle, or pays any part of the retrieval path, the measured overhead is understated and the comparison flatters Arm B.
 
 - **Mitigation:** `NullMemoryLayer` loads nothing and opens nothing ([05 §Startup checklist](./05-configuration.md#startup-checklist)).
 - **Also:** retrieval latency grows with `collection_count`, so a single average is misleading. Report latency as a function of store size.
 
 ---
 
+## R11 — Schema locked on an undefined upstream contract
+
+**Severity: medium, and currently live.**
+
+Several fields in the case schema are inherited from Layer 2, whose output format is an open Phase 0 task ([`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §7 Phase 0, which also requires "complete data consistency between layers"). The detector has not been chosen. If the schema is locked before that contract is settled, either the schema will need a version bump — invalidating every stored vector ([02 §Schema versioning](./02-case-schema.md#schema-versioning)) — or fields will be filled with sentinels that make retrieval and reporting weaker than designed.
+
+- **Mitigation:** settle [OQ-9](./07-open-questions.md#oq-9--what-does-layer-2-emit) before Phase 2 locks the embedding function. [`CLAUDE.md`](../../CLAUDE.md) forbids inventing dataset fields or schema entries, so pending fields stay marked pending rather than being guessed into existence.
+- **Report:** if any field ships as a sentinel, say so in the limitations, because it changes what similarity is computed over.
+
+---
+
 ## Standing constraint
 
-[`CLAUDE.md`](../../CLAUDE.md) §140: **a negative or null result is a legitimate outcome.**
+[`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8: **a negative or null result is a legitimate outcome.** [`CLAUDE.md`](../../CLAUDE.md) makes it an operating rule: *do not tune parameters, thresholds, or prompts to improve Arm B's results; a null or negative result must be reported as-is.*
 
 Every mitigation above is a defensible engineering choice *and* a degree of freedom that could be tuned until Arm B wins. The protections against that are procedural, not technical:
 
@@ -139,5 +154,6 @@ Every mitigation above is a defensible engineering choice *and* a degree of free
 - The write policy is declared before the run, not selected after seeing results.
 - Every swept configuration is reported, not only the best one.
 - Cold-start and steady-state splits are defined by the hit-rate plateau, not chosen to favour an outcome.
+- The evaluation harness and metric definitions are a protected component: not edited while implementing this layer, and not adjusted after results are in.
 
 If Arm B loses under an honestly configured memory layer, that is the finding — and R3, R6, and R7 above are the explanation for *why*, which is a more useful contribution than a tuned win.

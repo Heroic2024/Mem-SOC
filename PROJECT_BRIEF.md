@@ -102,7 +102,7 @@ CICIDS2017 ground-truth labels function as **simulated analyst verdicts** for ev
 ## 7. Build Phases
 
 **Phase 0 — Setup & data prep**
-Install ChromaDB and embedding model. Persistent mode from the start. Preprocess CICIDS2017. Find the right OS ML model and define the output format. Complete data consistency should be maintained between layers. Define the **case schema**: which features become the embedded text representation vs. which become filterable metadata. N
+Install ChromaDB and embedding model. Persistent mode from the start. Preprocess CICIDS2017. Find the right OS ML model and define the output format. Complete data consistency should be maintained between layers. Define the **case schema**: which features become the embedded text representation vs. which become filterable metadata.
 
 **Phase 1 — Baseline (Arm A) first**
 Fixed-prompt LLM triage, no retrieval, no storage. Log verdicts against ground truth. Build this before the memory arm so there is something to beat.
