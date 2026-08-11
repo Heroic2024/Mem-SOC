@@ -57,11 +57,11 @@ If the team chooses otherwise, `CaseRenderer` must render a synthetic verdict pl
 
 ### Feature selection
 
-CICIDS2017 in its published form carries ~78 numeric flow features. Embedding all of them is counterproductive:
+The NF-* v3 datasets carry 55 columns — 53 flow features plus `Label` and `Attack`; 48 features survive into `X` after the drops at `final_ml_model_v1/src/features/feature_engineering.py:18-26`. Embedding all of them is counterproductive:
 
 - **Token budget.** The candidate embedding model truncates at a fixed sequence length (256 word-piece tokens for `all-MiniLM-L6-v2`, the model named as a candidate in [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §6). Dozens of labelled float values overrun it, and the model silently drops the tail — the last third of the features then contribute *nothing*, unpredictably. See [05 §Token budget](./05-configuration.md#token-budget) and [R5](./06-risks-and-limitations.md#r5--silent-truncation-at-the-token-limit).
 - **Signal dilution.** Sentence-transformer embeddings of long numeric strings compress toward each other. More numbers is not more signal.
-- **Redundancy.** Many CICIDS2017 features are near-collinear.
+- **Redundancy.** Many NF-* v3 features are near-collinear (the `NUM_PKTS_*_BYTES` buckets, the paired `SRC_TO_DST_*` / `DST_TO_SRC_*` statistics).
 
 The template below covers the axes SOC analysts actually reason about: who talked to whom, volume, rate, shape, timing, and TCP flag posture. **Which of these fields actually exist is pending** the Phase 0 preprocessing decision ([OQ-9](./07-open-questions.md#oq-9--what-does-layer-2-emit)).
 
@@ -91,7 +91,7 @@ These are not cosmetic. They control variance in the vector space.
 |---|---|
 | **Fixed field order, fixed labels, every line always present** | Positional and lexical consistency. A missing line shifts everything after it. |
 | **Fixed decimal precision per field** (as in the template) | `1523.4471028` and `1523.4` embed differently. Round once, at render time. |
-| **Render `null`/`NaN`/`Inf` as the literal `n/a`** | CICIDS2017 contains non-finite values in rate columns for zero-duration flows. Never render `inf` or let a formatter raise. |
+| **Render `null`/`NaN`/`Inf` as the literal `n/a`** | The NF-* v3 rate/throughput columns contain non-finite or missing values for zero-duration flows — `SRC_TO_DST_SECOND_BYTES` is explicitly null-filled at `preprocessor.py:30-32`. Never render `inf` or let a formatter raise. |
 | **Resolve protocol number to name** (`6`→`TCP`, `17`→`UDP`) | Gives the language model something semantically meaningful to match on. |
 | **Resolve well-known destination ports to a name** (`80`→`http`, `443`→`https`, `22`→`ssh`; otherwise the number) | Same reason. `ssh` carries meaning that `22` does not. |
 | **Do not normalize or scale numerics** | Scaling is for the detector, not for text. Human-readable magnitudes embed better. |
@@ -135,7 +135,7 @@ Every key here exists only if the corresponding column survives Phase 0 preproce
 | `day` | str | Capture day. Useful for slicing, **dangerous as a filter** — see below. |
 | `timestamp` | str | Flow timestamp from the dataset. |
 
-> **Do not filter on `day` in the retrieval path.** In CICIDS2017 each attack family is concentrated on specific capture days. Filtering by day would leak the label through the filter and hand Arm B an advantage that has nothing to do with memory. Store it for post-hoc analysis only.
+> **Do not filter on any time-derived field in the retrieval path.** In testbed captures like the NF-* v3 datasets, attack families are concentrated in specific capture windows. Filtering by capture day or time range would leak the label through the filter and hand Arm B an advantage that has nothing to do with memory. Store time for post-hoc analysis only. Note that any such field would have to be derived from `FLOW_START_MILLISECONDS`, which is currently dropped before the alert is built (`feature_engineering.py:23-24`).
 
 ### Detector output — pending OQ-9
 

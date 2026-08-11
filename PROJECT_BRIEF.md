@@ -53,12 +53,13 @@ If any measured difference between arms could be attributed to something other t
 ```
 
 ### Layer 1 — Data Stream
-- Source dataset: **CICIDS2017**.
+- Source dataset: **NF-UNSW-NB15-v3** (current — what the detector is trained on today) → **NF-CICIDS2018-v3** (target for model training). Both use the NetFlow v3 schema, so the feature set is stable across the switch; the **attack label vocabulary is not**.
+- CICIDS2017 was the original choice and has been **dropped as outdated**.
 - Replayed as a sequential alert stream to simulate live SOC ingest.
 - The **identical sequence** must be replayable deterministically through both arms. Seed and order must be reproducible.
 
 ### Layer 2 — Detection (Open-Source ML Model)
-- An open-source ML classifier trained on CICIDS2017 produces the alerts/scores that enter triage.
+- An open-source ML classifier (LightGBM multiclass, `final_ml_model_v1/`) trained on the NF-* v3 dataset produces the alerts/scores that enter triage.
 - **Frozen after training.** It is a fixed input, not a subject of evaluation. Do not tune it per-arm.
 - Produces the raw signal; it does **not** produce the final verdict.
 
@@ -80,7 +81,7 @@ If any measured difference between arms could be attributed to something other t
 
 ## 5. Ground Truth Handling — Read Carefully
 
-CICIDS2017 ground-truth labels function as **simulated analyst verdicts** for evaluation purposes.
+The dataset's ground-truth labels (the `Attack` column) function as **simulated analyst verdicts** for evaluation purposes.
 
 **Working assumption to implement:** ground-truth labels are held out as the **evaluation oracle only**. The ML detector produces alerts; the LLM produces verdicts; ground truth scores those verdicts after the fact.
 
@@ -92,7 +93,7 @@ CICIDS2017 ground-truth labels function as **simulated analyst verdicts** for ev
 
 - **Vector DB:** ChromaDB. Apache 2.0 licensed, open source, no vendor lock-in. Purpose-built for RAG; acts as long-term memory in a RAG pipeline. Persists to disk by default. Supports per-entry metadata for filtering. Uses HNSW graphs for top-k similarity search. Fast to stand up for a research prototype.
 - **Embedding model:** a local sentence-transformers model (e.g. `all-MiniLM-L6-v2`) — lightweight, runs locally, no API dependency.
-- **Detection model:** open-source ML classifier trained on CICIDS2017.
+- **Detection model:** open-source ML classifier (LightGBM multiclass) trained on the NF-* v3 dataset.
 - **LLM:** single fixed model, identical across both arms.
 
 **Documented ChromaDB limitations (must appear in the limitations section):** high memory usage at scale due to reliance on in-memory operations; limited scalability for workloads with millions of vectors, where Pinecone/Weaviate/Milvus perform better. Neither blocks this project — a controlled comparison on a fixed dataset — but both would warrant re-evaluation at production traffic volumes.
@@ -102,7 +103,7 @@ CICIDS2017 ground-truth labels function as **simulated analyst verdicts** for ev
 ## 7. Build Phases
 
 **Phase 0 — Setup & data prep**
-Install ChromaDB and embedding model. Persistent mode from the start. Preprocess CICIDS2017. Find the right OS ML model and define the output format. Complete data consistency should be maintained between layers. Define the **case schema**: which features become the embedded text representation vs. which become filterable metadata.
+Install ChromaDB and embedding model. Persistent mode from the start. Preprocess the NF-* v3 dataset. Find the right OS ML model and define the output format. Complete data consistency should be maintained between layers. Define the **case schema**: which features become the embedded text representation vs. which become filterable metadata.
 
 **Phase 1 — Baseline (Arm A) first**
 Fixed-prompt LLM triage, no retrieval, no storage. Log verdicts against ground truth. Build this before the memory arm so there is something to beat.
@@ -133,7 +134,8 @@ These must be documented, not buried. They are part of the honest contribution.
 - **Error propagation** — a mis-triaged case stored in memory can cause the same error to repeat across all future similar alerts. This is the single most important failure mode. It must be explicitly *tested*, not just mentioned: identify or inject a mis-stored case and measure downstream corruption.
 - **Cold start** — an empty memory store means early alerts receive no benefit, likely understating steady-state performance.
 - **Retrieval noise** — a poorly chosen top-k or absent threshold injects irrelevant "precedent" and could make Arm B *worse* than Arm A.
-- **Dataset age/realism** — CICIDS2017 is simulated and dated; traffic patterns may not reflect current SOC alert distributions.
+- **Dataset realism** — NF-UNSW-NB15-v3 and NF-CICIDS2018-v3 are synthetic testbed captures, not production traffic; their attack mix and volumes may not reflect real SOC alert distributions. Newer than CICIDS2017, but still simulated.
+- **Dataset switch mid-project** — the detector is trained on NF-UNSW-NB15-v3 today and targeted at NF-CICIDS2018-v3. The two share the NetFlow v3 feature schema but have **disjoint attack label vocabularies**, so a retrain changes `detector_label` and invalidates every stored case. Any switch requires a `schema_version` bump and a new store; results across the two are not comparable.
 - **Ground-truth oversimplification** — real analyst verdicts involve ambiguity that binary labels do not capture.
 - **Frozen detector** — the study says nothing about how memory-augmented triage behaves with a noisy or imperfect detector, which is the real-world case.
 

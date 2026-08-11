@@ -81,7 +81,7 @@ These are non-negotiable. Violating any one of them invalidates the comparison.
 
 Deliberately excluded, per the instruction to focus only on this layer:
 
-- The CICIDS2017 replay harness and its determinism guarantees (Layer 1)
+- The NF-* v3 flow replay harness and its determinism guarantees (Layer 1)
 - Selecting, training, freezing, and evaluating the ML detector (Layer 2)
 - LLM prompt engineering, verdict parsing, and report generation (Layer 4)
 - The experiment protocol, scoring harness, and metric definitions (Phase 4)

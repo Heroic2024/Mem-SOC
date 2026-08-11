@@ -38,8 +38,8 @@ The memory layer is the crux of this research. Everything else in the system is 
 
 | Layer | Component | Role |
 |---|---|---|
-| 1 | CICIDS2017 replay | Sequential alert stream simulating live SOC ingest |
-| 2 | Open-source ML classifier | Produces alerts/scores. **Frozen** — not under evaluation |
+| 1 | NF-* v3 flow replay | Sequential alert stream simulating live SOC ingest |
+| 2 | LightGBM multiclass classifier | Produces alerts/scores. **Frozen** — not under evaluation |
 | 3 | ChromaDB + sentence-transformers | **The research crux.** Stores and retrieves past cases by similarity |
 | 4 | LLM | Produces verdicts and explainable reports |
 
@@ -73,7 +73,7 @@ Two arms, one variable.
 Both arms replay the identical alert sequence. Compared on:
 
 - **False-positive volume** (primary metric)
-- Precision / recall / F1 against CICIDS2017 ground truth
+- Precision / recall / F1 against dataset ground truth
 - Verdict consistency across similar alerts
 - Latency and token-cost overhead from retrieval
 - Qualitative quality of cited precedent
@@ -85,7 +85,7 @@ Both arms replay the identical alert sequence. Compared on:
 - **Error propagation** — a mis-triaged case in memory can repeat its error across every future similar alert. The most important failure mode; explicitly tested, not just noted.
 - **Cold start** — memory begins empty, likely understating steady-state performance.
 - **Retrieval noise** — a bad top-k or missing threshold could make the memory arm *worse* than baseline.
-- **Dataset realism** — CICIDS2017 is simulated and dated.
+- **Dataset realism** — NF-UNSW-NB15-v3 / NF-CICIDS2018-v3 are synthetic testbed captures, not production traffic.
 - **Frozen detector** — says nothing about behaviour with a noisy, real-world detection layer.
 
 ---
@@ -106,4 +106,4 @@ Both arms replay the identical alert sequence. Compared on:
 
 ## Stack
 
-ChromaDB (Apache 2.0) · sentence-transformers · open-source ML classifier · CICIDS2017
+ChromaDB (Apache 2.0) · sentence-transformers · LightGBM multiclass classifier · NF-UNSW-NB15-v3 / NF-CICIDS2018-v3
