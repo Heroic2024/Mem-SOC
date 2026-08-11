@@ -8,7 +8,8 @@ class AlertGenerator:
         attack,
         confidence,
         flow,
-        top_features
+        top_features,
+        shap_explanation=None
     ):
 
         alert = {
@@ -22,7 +23,18 @@ class AlertGenerator:
             "top_features": top_features
         }
 
+        # Add SHAP explanation if available
+        if shap_explanation is not None:
+
+            alert["shap_explanation"] = shap_explanation
+
         print("\n========== ALERT ==========\n")
-        print(json.dumps(alert, indent=4))
+
+        print(
+            json.dumps(
+                alert,
+                indent=4
+            )
+        )
 
         return alert

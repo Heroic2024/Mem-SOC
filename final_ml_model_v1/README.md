@@ -1,310 +1,549 @@
-# MemSOC: Memory-Augmented AI SOC Analyst
+# MemSOC — ML Progress & Deployment Plan
 
-MemSOC is an AI-powered Security Operations Center (SOC) analyst designed to automate network intrusion detection, explain attack decisions, and generate structured security alerts. The project uses machine learning for attack detection and classification, with future integration of explainable AI, memory augmentation, and Large Language Models (LLMs).
+## 1. Scope
 
----
+This component covers the ML-based network attack detection system:
 
-## Current Project Status
-
-### Completed
-
-- Dataset loading
-- Dataset validation
-- Exploratory Data Analysis (EDA)
-- Data preprocessing
+- Dataset validation and EDA
+- Preprocessing
 - Feature engineering
-- Binary attack detection model
-- Multi-class attack classification model
-- Alert generation pipeline
+- Binary attack detection
+- Multiclass attack classification
+- SHAP explainability
+- Alert generation
+- Local inference
+- Planned REST API deployment
 
-### In Progress
+The separate LLM and memory-layer work is outside this component.
 
-- Improving multiclass model performance
-- SHAP-based explainability
+## 2. Completed Work
 
-### Planned
+### Dataset Validation
+Dataset:
 
-- Offline training pipeline
-- Real-time inference pipeline
-- Memory layer integration
-- LLM-powered SOC analyst
+`data/raw/NF-UNSW-NB15-v3.csv`
 
----
+Final dataset:
 
-## Dataset
-
-Current dataset:
-
-- **NF-UNSW-NB15-v3**
-
-Dataset statistics after preprocessing:
-
-- Total Samples: **2,350,609**
-- Features Used: **48**
-- Binary Classes:
-  - Benign
-  - Attack
-- Multi-class Attack Categories:
-  - Analysis
-  - Backdoor
-  - DoS
-  - Exploits
-  - Fuzzers
-  - Generic
-  - Reconnaissance
-  - Shellcode
-  - Worms
-
----
-
-## Project Structure
-
-```
-MemSOC/
-│
-├── configs/
-├── data/
-│   └── raw/
-│
-├── models/
-│
-├── notebooks/
-├── outputs/
-├── reports/
-│
-└── src/
-    ├── alerts/
-    ├── dataset/
-    ├── eda/
-    ├── explainability/
-    ├── features/
-    ├── models/
-    ├── preprocessing/
-    └── utils/
-```
-
----
-
-## Pipeline
-
-```
-NF-UNSW-NB15 Dataset
-        │
-        ▼
-Dataset Loader
-        │
-        ▼
-Dataset Validator
-        │
-        ▼
-EDA
-        │
-        ▼
-Preprocessing
-        │
-        ▼
-Feature Engineering
-        │
-        ▼
-Train/Test Split
-        │
-        ▼
-Binary LightGBM
-        │
-        ▼
-Multiclass LightGBM
-        │
-        ▼
-Alert Generator
-```
-
----
-
-## Modules Implemented
-
-### Dataset Loader
-
-- Loads the NF-UNSW-NB15 dataset
-- Performs path validation
-- Returns a Pandas DataFrame
-
----
-
-### Dataset Validator
-
-Performs several quality checks including:
-
-- Dataset dimensions
-- Memory usage
-- Missing values
-- Duplicate rows
-- Constant columns
-- Attack distribution
-- Label distribution
-
----
-
-### Exploratory Data Analysis (EDA)
-
-Current analysis includes:
-
-- Attack distribution visualization
-- Class frequency inspection
-
----
+- 2,365,424 rows
+- 55 columns
+- 63,425 missing values in `SRC_TO_DST_SECOND_BYTES`
+- 14,815 duplicate rows
+- 0 constant columns
 
 ### Preprocessing
+Current preprocessing:
 
-Current preprocessing steps:
+```python
+self.df = self.df.drop_duplicates()
 
-- Duplicate removal
-- Missing value handling
+self.df["SRC_TO_DST_SECOND_BYTES"] = (
+    self.df["SRC_TO_DST_SECOND_BYTES"].fillna(0)
+)
+```
 
----
+Dataset-level duplicate removal and missing-value handling are complete.
 
 ### Feature Engineering
 
-Current feature engineering includes:
+The current training feature engineering removes:
 
-- Removal of target columns
-- Removal of identifier columns
-- Selection of training features
-- Binary labels
-- Multi-class labels
+```text
+Attack
+Label
+IPV4_SRC_ADDR
+IPV4_DST_ADDR
+FLOW_START_MILLISECONDS
+FLOW_END_MILLISECONDS
+DNS_QUERY_ID
+```
 
----
+This produces the final **48 model features**.
 
-### Train/Test Split
+Targets:
 
-Binary model:
+```text
+y_binary = Label
+y_multi  = Attack
+```
 
-- 80% Training
-- 20% Testing
+Therefore:
 
-Multi-class model:
+```text
+55 original columns
+        ↓
+remove 7 columns
+        ↓
+48 model features
+```
 
-- Uses only attack samples
-- 80% Training
-- 20% Testing
+For inference, `Attack` and `Label` will not be present because they are prediction targets.
 
----
+## 3. Data Splitting
 
-### Binary Classification Model
+Binary classification:
 
-Model:
+```text
+X Train : 1,880,487
+X Test  :   470,122
+```
 
-- LightGBM Classifier
+Multiclass attack classification:
 
-Task:
+```text
+Attack X Train : 102,143
+Attack X Test  : 25,536
+```
 
-- Detect whether network traffic is:
-  - Benign
-  - Attack
+## 4. Final Binary LightGBM
 
-Current performance:
+The binary model determines:
 
-- Accuracy: ~100%
-- Precision: ~99.97%
-- Recall: ~99.99%
-- F1 Score: ~99.98%
+```text
+Benign
+or
+Attack
+```
 
----
+Final evaluation:
 
-### Multi-class Classification Model
+```text
+Accuracy  : 1.0000
+Precision : 0.9997
+Recall    : 0.9999
+F1        : 0.9998
+```
 
-Model:
+Saved model:
 
-- LightGBM Classifier
+```text
+models/binary_lightgbm.pkl
+```
 
-Task:
+The binary model configuration is finalized.
 
-Predict attack categories including:
+## 5. Final Multiclass LightGBM
 
-- Analysis
-- Backdoor
-- DoS
-- Exploits
-- Fuzzers
-- Generic
-- Reconnaissance
-- Shellcode
-- Worms
+The multiclass model identifies:
 
-Current performance:
+```text
+Analysis
+Backdoor
+DoS
+Exploits
+Fuzzers
+Generic
+Reconnaissance
+Shellcode
+Worms
+```
 
-- Accuracy: ~70%
+Final configuration:
 
-Future work focuses on improving this model.
+```text
+n_estimators      = 600
+learning_rate     = 0.03
+num_leaves        = 63
+min_child_samples = 50
+random_state      = 42
+```
 
----
+Final class weights:
 
-### Alert Generator
+```text
+Analysis          4.0
+Backdoor          2.0
+DoS               1.8
+Exploits          0.5
+Fuzzers           0.6
+Generic           0.8
+Reconnaissance    0.9
+Shellcode         3.0
+Worms             5.0
+```
 
-Generates structured JSON alerts containing:
+Final performance:
 
-- Predicted attack
-- Confidence score
-- Source port
-- Destination port
-- Protocol
-- Top contributing features (currently based on model feature importance)
+```text
+Accuracy    : 75.62%
+Weighted F1 : 75.47%
+Macro F1    : 63.02%
+```
+
+A separate 100-sample practical test produced:
+
+```text
+72 correct
+28 incorrect
+72% accuracy
+```
+
+The **75.62% full test-set accuracy** is the primary evaluation metric. The 72/100 test is treated as a practical sanity check.
+
+Saved model:
+
+```text
+models/multiclass_lightgbm.pkl
+```
+
+### Class-wise F1
+
+```text
+Generic          89.82%
+Fuzzers          78.73%
+Exploits         76.89%
+Reconnaissance   73.49%
+Shellcode        68.11%
+Worms            58.06%
+DoS              45.85%
+Analysis         41.87%
+Backdoor         33.40%
+```
+
+The multiclass model is finalized. No further model tuning is planned.
+
+## 6. SHAP Explainability
+
+SHAP has been integrated to explain the multiclass prediction.
 
 Example:
 
 ```json
 {
-    "attack": "Generic",
-    "confidence": 0.335,
-    "src_port": 21697,
-    "dst_port": 15726,
-    "protocol": 6,
+    "feature": "MIN_IP_PKT_LEN",
+    "shap_value": 0.7919,
+    "impact": "positive"
+}
+```
+
+Interpretation:
+
+- `positive` — contributed toward the predicted class
+- `negative` — pushed away from the predicted class
+
+## 7. Alert Generation
+
+The final alert combines:
+
+- Attack type
+- Confidence
+- Source port
+- Destination port
+- Protocol
+- Model top features
+- SHAP explanation
+
+Example:
+
+```json
+{
+    "attack": "Exploits",
+    "confidence": 0.6308,
+    "src_port": 11782,
+    "dst_port": 53,
+    "protocol": 17,
     "top_features": [
         "L4_SRC_PORT",
-        "L4_DST_PORT",
         "ICMP_TYPE",
-        "LONGEST_FLOW_PKT",
-        "IN_BYTES"
+        "SRC_TO_DST_IAT_MAX",
+        "L4_DST_PORT",
+        "LONGEST_FLOW_PKT"
+    ],
+    "shap_explanation": [
+        {
+            "feature": "MIN_IP_PKT_LEN",
+            "shap_value": 0.7919,
+            "impact": "positive"
+        }
     ]
 }
 ```
 
----
+## 8. Testing Completed
 
-## Technologies Used
+```text
+Dataset validation              DONE
+EDA                              DONE
+Preprocessing                    DONE
+Binary evaluation                DONE
+Multiclass evaluation            DONE
+Class imbalance analysis         DONE
+RandomOverSampler experiment     DONE / removed
+Class-weight experiments         DONE
+Hyperparameter experiments       DONE
+Final model selection             DONE
+SHAP integration                 DONE
+SHAP verification                DONE
+100-sample practical test        DONE
+Class-wise evaluation             DONE
+```
 
-- Python
-- Pandas
-- NumPy
-- Scikit-learn
-- LightGBM
-- Matplotlib
-- SHAP (integration in progress)
+The model configuration is now **frozen**.
 
----
+## 9. Next Stage — Local Inference Pipeline
 
-## Current Challenges
+The next task is to build:
 
-The multiclass classifier currently achieves approximately **70% accuracy** due to class imbalance within the dataset.
+```text
+src/inference/
+├── __init__.py
+└── inference_pipeline.py
+```
 
-The next development phase focuses on:
+The target flow is:
 
-- Class weighting
+```text
+                 JSON Network Log
+                         |
+                         v
+               Input Validation
+                         |
+                         v
+                  Preprocessing
+                         |
+                         v
+                Feature Preparation
+                         |
+                         v
+                 48 Model Features
+                         |
+                         v
+                 Binary LightGBM
+                         |
+                +--------+--------+
+                |                 |
+             Benign             Attack
+                |                 |
+                |                 v
+                |        Multiclass LightGBM
+                |                 |
+                |                 v
+                |          Attack Category
+                |                 |
+                |                 v
+                |               SHAP
+                |                 |
+                +--------+--------+
+                         |
+                         v
+                   Final Alert
+```
+
+## 10. Important Inference Requirement
+
+The trained model expects the same model-compatible feature structure used during training.
+
+Therefore:
+
+```text
+Training features
+        =
+Inference features
+```
+
+The incoming JSON must be converted into the correct model feature DataFrame before calling `predict()`.
+
+The inference pipeline should reuse the relevant preprocessing logic, but it should **not blindly run dataset-level operations** such as duplicate removal on each individual request.
+
+The inference pipeline also must not require `Attack` or `Label`, because these are the values being predicted.
+
+## 11. Training vs Inference
+
+### Training
+
+```text
+Dataset
+   ↓
+Preprocessing
+   ↓
+Feature Engineering
+   ↓
+model.fit()
+   ↓
+Saved .pkl model
+```
+
+### Inference
+
+```text
+New JSON
+   ↓
+Validation
+   ↓
+Feature preparation
+   ↓
+model.predict()
+   ↓
+Prediction
+```
+
+Inference will not retrain the models.
+
+## 12. Remaining Testing
+
+After building the local inference pipeline:
+
+### Test 1 — Single valid JSON
+
+```text
+JSON
+ ↓
+Binary
+ ↓
+Multiclass
+ ↓
+SHAP
+ ↓
+Alert
+```
+
+### Test 2 — Multiple JSON samples
+
+Verify predictions across different network-flow records.
+
+### Test 3 — Invalid input
+
+Test:
+
+- Missing required feature
+- Incorrect data type
+- Null value
+- Empty JSON
+- Unexpected fields
+
+## 13. REST API Deployment — After Inference Testing
+
+Once local inference is verified, wrap it in FastAPI.
+
+Planned endpoints:
+
+```text
+POST /api/logs
+GET  /api/logs
+GET  /api/predictions
+```
+
+### Log ingestion
+
+```text
+POST /api/logs
+```
+
+Receives JSON network logs.
+
+### Application/server logs
+
+```text
+GET /api/logs
+```
+
+Retrieves application logs.
+
+### Model predictions
+
+```text
+GET /api/predictions
+```
+
+Retrieves generated detection results.
+
+## 14. Final Deployment Architecture
+
+```text
+External Log Source / SIEM
+          |
+          | POST /api/logs
+          v
+      FastAPI Server
+          |
+          v
+   Inference Pipeline
+          |
+          v
+    Binary LightGBM
+          |
+       Attack?
+       /     \
+     No       Yes
+     |         |
+  Benign       v
+          Multiclass
+              |
+              v
+             SHAP
+              |
+              v
+        Alert Generator
+              |
+              v
+       Prediction Store
+          /          \
+         v            v
+GET /api/logs   GET /api/predictions
+```
+
+## 15. Planned Project Structure
+
+```text
+MemSOC/
+│
+├── main.py
+│
+├── api/
+│   ├── __init__.py
+│   ├── server.py
+│   └── schemas.py
+│
+├── models/
+│   ├── binary_lightgbm.pkl
+│   └── multiclass_lightgbm.pkl
+│
+├── src/
+│   ├── preprocessing/
+│   ├── features/
+│   ├── models/
+│   ├── explain/
+│   ├── alerts/
+│   └── inference/
+│
+├── logs/
+├── data/
+└── requirements.txt
+```
+
+## 16. Development Roadmap
+
+```text
+FINALIZED ML MODELS
+        ↓
+LOCAL INFERENCE PIPELINE       ← NEXT
+        ↓
+VALID JSON TESTING
+        ↓
+INVALID INPUT TESTING
+        ↓
+FASTAPI
+        ↓
+POST /api/logs
+GET  /api/logs
+GET  /api/predictions
+        ↓
+LOCAL API TESTING
+        ↓
+SERVER DEPLOYMENT
+```
+
+## 17. Important Project Decision
+
+The model configuration is now **frozen**.
+
+No further:
+
+- Random oversampling
+- Class-weight experimentation
 - Hyperparameter tuning
-- Feature selection
-- Explainability using SHAP
+- Model replacement
 
----
+will be performed unless a serious implementation problem is discovered.
 
-## Future Roadmap
-
-- Improve multiclass model performance
-- Implement SHAP explainability
-- Separate offline training and inference pipelines
-- Integrate vector memory for historical alert retrieval
-- Connect the alert pipeline to an LLM for automated SOC analysis
-
----
-
-## License
-
-This project is developed for research and educational purposes.
+The remaining work is focused on **using the finalized models correctly in an inference pipeline and deploying them as an API**.
