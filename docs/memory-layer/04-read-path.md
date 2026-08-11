@@ -67,7 +67,7 @@ Chroma applies `where` **before** similarity ranking, so a filter shrinks the ca
 
 | Filter | Why it is disqualifying |
 |---|---|
-| `{"day": ...}` | CICIDS2017 concentrates each attack family on specific capture days. Filtering by day leaks the label through the filter. |
+| any time-derived field | Testbed captures like the NF-* v3 datasets concentrate each attack family in specific capture windows. Filtering by time leaks the label through the filter. |
 | `{"detector_label": ...}` | Restricts precedent to cases the frozen detector already agreed with, so memory can no longer contradict the detector — which is one of the things it is supposed to be able to do. |
 | `{"verdict": "true_positive"}` | Retrieves only confirmations. Guarantees biased precedent. |
 | anything derived from ground truth | The oracle leak from [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §5. |

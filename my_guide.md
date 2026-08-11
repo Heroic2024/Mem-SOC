@@ -20,7 +20,7 @@ The memory layer is touched **twice per alert**: once to read (before the LLM th
 
 ## Step 0 — What arrives from the ML model
 
-One flow record comes in from Layer 1 (a row of CICIDS2017 features). The detector looks at it and emits three things the memory layer needs:
+One flow record comes in from Layer 1 (a row of NF-* v3 NetFlow features). The detector looks at it and emits three things the memory layer needs:
 
 | What the detector gives | Becomes |
 |---|---|
@@ -92,13 +92,13 @@ Flags: SYN 0 FIN 0 RST 0 PSH 1 ACK 1 URG 0
 Shape: down/up 6, avg pkt 966, init win 29200/235
 ```
 
-**Why only ~25 features and not all 78?** Three reasons (`docs/memory-layer/02-case-schema.md:60`): the embedding model truncates at 256 tokens and silently drops whatever doesn't fit; long numeric strings all compress toward each other so more numbers ≠ more signal; and many CICIDS2017 columns are near-duplicates of each other anyway.
+**Why only a subset and not all 48 features?** Three reasons (`docs/memory-layer/02-case-schema.md:60`): the embedding model truncates at 256 tokens and silently drops whatever doesn't fit; long numeric strings all compress toward each other so more numbers ≠ more signal; and many NF-* v3 columns are near-duplicates of each other anyway.
 
 **Why these rules matter more than they look:**
 - `6` → `TCP` and `80` → `http`, because `ssh` means something to a language model and `22` doesn't.
 - Fixed decimal precision — `1523.4471028` and `1523.4` produce different vectors.
 - Every line always present, same order. A missing line shifts everything after it.
-- `NaN`/`Inf` render as the literal `n/a`. CICIDS2017 has non-finite rate values for zero-duration flows.
+- `NaN`/`Inf` render as the literal `n/a`. The NF-* v3 rate/throughput columns have non-finite or missing values for zero-duration flows.
 
 **The symmetry rule** (`docs/memory-layer/02-case-schema.md:48`): the *same renderer object* is used on the read path. When searching, we describe the incoming alert with this exact template. If writing used a template with a `VERDICT:` line and reading used one without, queries and documents would sit in different regions of the space and similarity would quietly degrade. That's why `CaseRenderer` is one shared class, not two — there's no opportunity for them to drift.
 
@@ -149,7 +149,7 @@ Four things worth calling out:
 
 - **`case_id` = `{run_id}:{seq:06d}`** — not a random UUID. It's sortable, and it tells you exactly which run and which stream position produced it. A case ID you can't trace back to a position in the stream isn't citable in an audit.
 - **`precedent_used`** — the case IDs that informed *this* verdict. This is what makes error propagation traceable: it turns the store into a graph where you can follow a wrong verdict forward and see exactly which later cases it infected. Comma-joined because Chroma won't take lists.
-- **`day` is stored but must never be used as a filter.** In CICIDS2017 each attack family sits on specific capture days, so filtering by day leaks the answer through the filter. Store for analysis, never for retrieval.
+- **Time fields must never be used as a filter.** In testbed captures each attack family sits in specific capture windows, so filtering by time leaks the answer through the filter. Store for analysis, never for retrieval.
 - **There is no `ground_truth` field, on purpose.** The true labels are the grading key. Put them in memory and memory becomes an oracle instead of an analyst's notebook, which would inflate Arm B's results into meaninglessness. (Still formally open as OQ-2 — the absence is the working assumption, not a settled decision.)
 
 ---

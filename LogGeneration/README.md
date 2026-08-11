@@ -1,6 +1,6 @@
-# CICIDS2017 -> Zeek-style Log Generator
+# NF-* v3 -> Zeek-style Log Generator
 
-Converts the CICIDS2017 (NetFlow-format) dataset into realistic,
+Converts the NetFlow v3 dataset (NF-UNSW-NB15-v3 / NF-CICIDS2018-v3) into realistic,
 Zeek `conn.log`-style logs for training a memory-based intrusion
 detection model.
 
