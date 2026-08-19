@@ -1,42 +1,88 @@
 import logging
+import os
 import sys
 
 
-def setup_logger(name: str = "MemSOC") -> logging.Logger:
-    """
-    Configure and return a logger for the MemSOC project.
+LOG_DIR = "logs"
 
-    Parameters
-    ----------
-    name : str
-        Name of the logger.
+os.makedirs(
+    LOG_DIR,
+    exist_ok=True
+)
 
-    Returns
-    -------
-    logging.Logger
-        Configured logger instance.
-    """
 
-    logger = logging.getLogger(name)
+def create_logger(
+    name,
+    log_file
+):
+
+    logger = logging.getLogger(
+        name
+    )
+
+    logger.setLevel(
+        logging.INFO
+    )
+    logger.propagate = False
 
     # Prevent duplicate handlers
-    if logger.hasHandlers():
+    if logger.handlers:
         return logger
-
-    logger.setLevel(logging.INFO)
 
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
+    # Console
+    console_handler = logging.StreamHandler(
+        sys.stdout
+    )
 
-    logger.addHandler(console_handler)
+    console_handler.setFormatter(
+        formatter
+    )
+
+    # File
+    file_handler = logging.FileHandler(
+        os.path.join(
+            LOG_DIR,
+            log_file
+        ),
+        encoding="utf-8"
+    )
+
+    file_handler.setFormatter(
+        formatter
+    )
+
+    logger.addHandler(
+        console_handler
+    )
+
+    logger.addHandler(
+        file_handler
+    )
 
     return logger
 
 
-# Global logger instance
-logger = setup_logger()
+# General application logger
+logger = create_logger(
+    "MemSOC",
+    "application.log"
+)
+
+
+# Inference-specific logger
+inference_logger = create_logger(
+    "MemSOC.inference",
+    "inference.log"
+)
+
+
+# Alert-specific logger
+alert_logger = create_logger(
+    "MemSOC.alerts",
+    "alerts.log"
+)
