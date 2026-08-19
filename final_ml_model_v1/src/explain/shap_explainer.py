@@ -2,20 +2,20 @@ import joblib
 import shap
 import numpy as np
 
-from src.utils.logger import logger
+from src.utils.logger import inference_logger
 
 
 class SHAPExplainer:
 
     def __init__(self, model_path="models/multiclass_lightgbm.pkl"):
 
-        logger.info(
+        inference_logger.info(
             "Loading multiclass model for SHAP explanation..."
         )
 
         self.model = joblib.load(model_path)
 
-        logger.info(
+        inference_logger.info(
             "Multiclass model loaded successfully."
         )
 
@@ -25,7 +25,7 @@ class SHAPExplainer:
 
     def explain(self, sample, top_k=10):
 
-        logger.info(
+        inference_logger.info(
             "Calculating SHAP feature contributions..."
         )
 
@@ -43,11 +43,11 @@ class SHAPExplainer:
 
         class_index = classes.index(prediction)
 
-        logger.info(
+        inference_logger.info(
             f"Predicted class : {prediction}"
         )
 
-        logger.info(
+        inference_logger.info(
             f"Predicted class index : {class_index}"
         )
 
@@ -148,7 +148,7 @@ class SHAPExplainer:
             feature_contributions[:top_k]
         )
 
-        logger.info(
+        inference_logger.info(
             f"SHAP explanation generated "
             f"for class: {prediction}"
         )
