@@ -22,76 +22,30 @@ The trained models are:
 
 ## 2. High-Level Architecture
 
-``` text
-                         +----------------------+
-                         |   Log Source / SIEM  |
-                         |   JSON Network Logs  |
-                         +----------+-----------+
-                                    |
-                                    | POST /api/logs
-                                    v
-                    +------------------------------+
-                    |          API SERVER          |
-                    |        FastAPI + Uvicorn     |
-                    +--------------+---------------+
-                                   |
-                                   v
-                         +------------------+
-                         | JSON Validation  |
-                         | & Preprocessing  |
-                         +--------+---------+
-                                  |
-                                  v
-                         +------------------+
-                         | Feature          |
-                         | Engineering      |
-                         +--------+---------+
-                                  |
-                                  v
-                    +--------------------------+
-                    |   Binary LightGBM Model  |
-                    |                          |
-                    |  Benign  /  Attack       |
-                    +------------+-------------+
-                                 |
-                    +------------+-------------+
-                    |                          |
-                 BENIGN                     ATTACK
-                    |                          |
-                    v                          v
-             +-------------+        +---------------------+
-             | No Attack   |        | Multiclass LightGBM |
-             | Result      |        |                     |
-             +------+------+        | Attack Type         |
-                    |               +----------+----------+
-                    |                          |
-                    |                          v
-                    |               +---------------------+
-                    |               |    SHAP Explainer   |
-                    |               |                     |
-                    |               | Why was it detected?|
-                    |               +----------+----------+
-                    |                          |
-                    +------------+-------------+
-                                 v
-                       +---------------------+
-                       |   Alert Generator   |
-                       |                     |
-                       | Attack              |
-                       | Confidence          |
-                       | Ports / Protocol    |
-                       | Top Features        |
-                       | SHAP Explanation    |
-                       +----------+----------+
-                                  |
-                    +-------------+--------------+
-                    |                            |
-                    v                            v
-          GET /api/predictions            GET /api/logs
-                    |                            |
-                    v                            v
-             Model Results                 Server/Application
-                                            Logs
+```mermaid
+flowchart TD
+    A["Log Source / SIEM<br>JSON Network Logs"] -->|POST /api/logs| B["API SERVER<br>FastAPI + Uvicorn"]
+
+    B --> C["JSON Validation<br>& Preprocessing"]
+    C --> D["Feature Engineering"]
+
+    D --> E["Binary LightGBM Model<br><br>Benign / Attack"]
+
+    E -->|BENIGN| F["No Attack<br>Result"]
+    E -->|ATTACK| G["Multiclass LightGBM<br><br>Attack Type"]
+
+    G --> H["SHAP Explainer<br><br>Why was it detected?"]
+
+    F --> I["Alert Generator"]
+    H --> I
+
+    I --> J["Alert Generator<br><br>Attack<br>Confidence<br>Ports / Protocol<br>Top Features<br>SHAP Explanation"]
+
+    J --> K["GET /api/predictions"]
+    J --> L["GET /api/logs"]
+
+    K --> M["Model Results"]
+    L --> N["Server / Application<br>Logs"]
 ```
 
 ## 3. API Endpoints
