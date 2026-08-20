@@ -33,7 +33,7 @@ It is also the single most safety-critical component in this layer: **[Invariant
 
 **Speed is a non-issue here.** Our rendered cases are ~100 tokens; CPU embedding is single-digit milliseconds each. Even a 10k-alert sequential run spends only a few minutes total on embedding.
 
-**Token budget — current read:** the v0.1 text in [`SCHEMA_DESIGN.md §5a`](./SCHEMA_DESIGN.md#5a-what-is-renderable-today-v01-draft--not-recommended) lands around 80–110 tokens, so MiniLM has comfortable headroom and [OQ-8](../docs/memory-layer/07-open-questions.md#oq-8--which-embedding-model-is-locked-for-phase-2)'s blocking measurement would pass easily today. **But** if the alert is enriched with real feature values (B7), the text roughly triples and could approach the 256 limit. Measure *after* the payload is settled, not before — otherwise the measurement validates a template we are about to replace.
+**Token budget — measured 2026-08-15.** Rendering the full 44-feature template over a 2,598-row sample of the real dataset gives **p99 ≈ 184 estimated tokens** against MiniLM's 256 — ~28% headroom, and the distribution is tight (max 188) because the template is fixed-shape. [OQ-8](../docs/memory-layer/07-open-questions.md#oq-8--which-embedding-model-is-locked-for-phase-2)'s blocking measurement passes. Two caveats: it is a heuristic count, not a tokenizer run (no `transformers` installed yet — confirm at Step 5); and it holds **only if the alert is fixed-shape**, which is [B11](./SCHEMA_DESIGN.md#b11--shap-selected-features-make-the-alert-variable-shape--breaks-comparability). A variable-shape alert invalidates the measurement.
 
 ---
 
@@ -84,6 +84,10 @@ Pick the dataset the Arm A / Arm B comparison runs on end-to-end. If it is NF-CI
 | [OQ-3](../docs/memory-layer/07-open-questions.md#oq-3--where-does-attack_category-come-from) — source of `attack_category`? | Recommendation: the LLM's own categorization. |
 | [OQ-5](../docs/memory-layer/07-open-questions.md#oq-5--what-is-the-phase-2-default-write-policy) — default write policy? | Recommendation: `write_all`, so error propagation stays observable. |
 | **B6** — should the detector label be in the embedding text? | Risks turning retrieval into label lookup. See [`SCHEMA_DESIGN.md §B6`](./SCHEMA_DESIGN.md#b6--embedded-detector-label--label-based-retrieval--experimental-validity-risk). |
+| **B11** — will the alert carry a fixed 44-feature Core block? | 🔴 **The one that blocks everything.** A SHAP-selected, per-alert feature subset cannot be embedded: the shape varies, and the subset is chosen *by the predicted class*, so similarity would silently become label lookup. Recommendation: fixed Core block for the embedding, SHAP top-10 for the LLM prompt. See [`SCHEMA_DESIGN.md §B11`](./SCHEMA_DESIGN.md#b11--shap-selected-features-make-the-alert-variable-shape--breaks-comparability). |
+| **D1** — magnitude tokens in the embedding text? | MiniLM does not encode numeric magnitude. Recommendation: fixed order-of-magnitude buckets on volume/rate/duration only. Changes every case's text, so it must be settled pre-store. See [`SCHEMA_DESIGN.md §5d`](./SCHEMA_DESIGN.md#5d-open-decision--magnitude-tokens-d1). |
+| ~~**B9**~~ ✅ closed | IPs never enter the alert (confirmed `alert_generator.py:19-21`). Standing constraint: never re-join them — source IP predicts the label with **100% accuracy** on this dataset. |
+| ~~Tier 1 vs Tier 2~~ ✅ measured | Tier 2 (44 features) estimates **p99 ≈ 184 tokens** vs MiniLM's 256 — comfortable. Recommendation: Tier 2. Confirm with the real tokenizer at Step 5. |
 
 ### 🟠 Step 3 — Approve the Layer 2 alert changes
 
@@ -144,7 +148,7 @@ Note the ordering constraint from [`PROJECT_BRIEF.md`](../PROJECT_BRIEF.md) §7:
 | Persistent mode from the start | ✅ Decided and documented; unimplemented |
 | Preprocess the dataset | 🟠 Exists in `final_ml_model_v1/` against NF-UNSW-NB15-v3; not yet run against the NF-CICIDS2018-v3 target (B8) |
 | Data consistency between layers | 🔴 **Blocked** — no stable `alert_id` (B4) |
-| **Define the case schema** | 🟠 **Drafted as v0.1, not lockable** — see [`SCHEMA_DESIGN.md`](./SCHEMA_DESIGN.md) |
+| **Define the case schema** | 🟠 **Field universe fixed (48 features, verified 2026-08-15); allocation drafted, not lockable** — see [`SCHEMA_DESIGN.md §2b`](./SCHEMA_DESIGN.md#2b-the-feature-universe--verified) |
 
 **Nothing in the memory layer is implemented.** No package installed, no store created, no code written. That is the correct state: the schema determines the embedding text, the embedding text determines the token budget, and the token budget determines the model lock — which is irreversible. Building against v0.1 now would guarantee a re-render of every stored case.
 
