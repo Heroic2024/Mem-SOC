@@ -47,7 +47,7 @@ from replay_to_api import describe
 # ---------------------------------------------------------------------
 API_URL = "http://127.0.0.1:8000/api/logs"
 
-FLOW_INTERVAL = 1.0    # seconds between flows
+FLOW_INTERVAL = 0.5    # seconds between flows
 MAX_FLOWS = None       # set to an int to stop after N flows
 
 INDEX_FILE = "stream_index.npy"
