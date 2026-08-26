@@ -1,0 +1,85 @@
+{
+  "report_id": "sample-fuzzers",
+  "generated_at": "2026-08-24T16:27:16.885017+00:00",
+  "source_alert": {
+    "attack": "Fuzzers",
+    "confidence": 0.7228,
+    "src_port": 48171,
+    "dst_port": 445,
+    "protocol": 6,
+    "top_features": [
+      "L4_SRC_PORT",
+      "ICMP_TYPE",
+      "SRC_TO_DST_IAT_MAX",
+      "L4_DST_PORT",
+      "LONGEST_FLOW_PKT"
+    ],
+    "shap_explanation": [
+      {
+        "feature": "L4_DST_PORT",
+        "shap_value": 2.3646475096587776,
+        "impact": "positive"
+      },
+      {
+        "feature": "MIN_TTL",
+        "shap_value": 0.5834038955522293,
+        "impact": "positive"
+      },
+      {
+        "feature": "NUM_PKTS_128_TO_256_BYTES",
+        "shap_value": 0.5525650472730976,
+        "impact": "positive"
+      },
+      {
+        "feature": "DNS_QUERY_TYPE",
+        "shap_value": 0.2478425337784336,
+        "impact": "positive"
+      },
+      {
+        "feature": "RETRANSMITTED_OUT_BYTES",
+        "shap_value": 0.16251058893123974,
+        "impact": "positive"
+      },
+      {
+        "feature": "ICMP_TYPE",
+        "shap_value": -0.14961552531824074,
+        "impact": "negative"
+      },
+      {
+        "feature": "OUT_BYTES",
+        "shap_value": 0.13399896357112584,
+        "impact": "positive"
+      },
+      {
+        "feature": "LONGEST_FLOW_PKT",
+        "shap_value": -0.13246972343479232,
+        "impact": "negative"
+      },
+      {
+        "feature": "RETRANSMITTED_IN_BYTES",
+        "shap_value": 0.0925304117283628,
+        "impact": "positive"
+      },
+      {
+        "feature": "L4_SRC_PORT",
+        "shap_value": 0.07324072736869028,
+        "impact": "positive"
+      }
+    ]
+  },
+  "llm_report": {
+    "assessment": "Likely genuine attack, as the model flags a fuzzer targeting SMB with high confidence and key indicators such as destination port 445 and packet size patterns",
+    "risk_level": "High",
+    "technical_summary": "The alert involves TCP traffic from source port 48171 to destination port 445, the SMB service. SHAP analysis shows strong contributions from L4_DST_PORT, MIN_TTL, NUM_PKTS_128_TO_256_BYTES, DNS_QUERY_TYPE, and RETRANSMITTED_OUT_BYTES, all of which are typical signatures of a fuzzer probing SMB. The presence of many 128\u2011256 byte packets and retransmissions suggests automated scanning for vulnerabilities.",
+    "non_technical_summary": "A potential fuzzing attempt was detected targeting the SMB service on port 445. The traffic shows patterns typical of automated scanners probing for weaknesses. This could lead to service disruption if the vulnerability is exploited.",
+    "key_indicators": [
+      "Destination port 445 SMB traffic",
+      "High number of 128-256 byte packets"
+    ]
+  },
+  "model": {
+    "provider": "groq",
+    "model_id": "openai/gpt-oss-20b",
+    "latency_ms": 2181.682348251343
+  }
+}
