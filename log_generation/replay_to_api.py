@@ -17,16 +17,22 @@ Usage:
 """
 
 import json
+import os
+import sys
 import time
 from collections import Counter
 
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import paths
+
 # ---------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------
-INPUT_JSONL = "generated_logs.jsonl"
-API_URL = "http://127.0.0.1:8000/api/logs"
+INPUT_JSONL = paths.GENERATED_LOGS
+API_URL = paths.API_URL
 DELAY = 0.1        # seconds between requests
 LIMIT = None       # set to an int to replay only the first N records
 

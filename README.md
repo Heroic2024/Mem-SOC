@@ -90,6 +90,13 @@ Both arms replay the identical alert sequence. Compared on:
 
 ---
 
+## Running it
+
+See **[`DOCKER.md`](./DOCKER.md)** for step-by-step build, run and test
+instructions (Docker and native).
+
+---
+
 ## Repository
 
 - [`CLAUDE.md`](./CLAUDE.md) — full project brief and authoritative design context. **Read this first.**

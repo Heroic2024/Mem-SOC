@@ -26,20 +26,23 @@ Usage:
 
 import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
 
+# Repo root on sys.path: every path in this project comes from paths.py,
+# so the script behaves the same from any working directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import paths
+
 # ---------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------
-INPUT_CSV = os.path.join(
-    "..", "data", "NF-UNSW-NB15-v3",
-    "f7546561558c07c5_NFV3DATA-A11964_A11964", "data",
-    "NF-UNSW-NB15-v3.csv",
-)
-OUTPUT_JSONL = "generated_logs.jsonl"
-GROUND_TRUTH_CSV = "ground_truth.csv"
+INPUT_CSV = paths.DATASET_CSV
+OUTPUT_JSONL = paths.GENERATED_LOGS
+GROUND_TRUTH_CSV = paths.GROUND_TRUTH
 
 SEED = 42              # fixed: same seed -> byte-identical output
 SAMPLE_SIZE = 5000     # flows to draw from the eligible pool
