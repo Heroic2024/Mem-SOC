@@ -1,0 +1,71 @@
+# MemSOC container services.
+#
+# The dataset is not in the image -- point MEMSOC_HOST_DATA at the directory
+# holding NF-UNSW-NB15-v3.csv (at any depth; paths.py walks the tree).
+# Defaults to ./data, which is correct for a normal checkout.
+#
+#   docker compose build                # build once
+#   docker compose run --rm paths       # show the resolved layout
+#   docker compose run --rm generate    # build generated_logs.jsonl from the CSV
+#   docker compose run --rm pipeline    # full demo
+#   docker compose run --rm tests       # contract tests
+#   docker compose up api               # serve on localhost:8000
+
+# Shared runtime settings. Only the `pipeline` service declares `build:`, so
+# `docker compose build` builds the image once; every other service reuses the
+# resulting memsoc:latest rather than rebuilding the same Dockerfile per service.
+x-common: &common
+  image: memsoc:latest
+  volumes:
+    # Read-only: nothing in the pipeline writes to the dataset.
+    - ${MEMSOC_HOST_DATA:-./data}:/data:ro
+    # Named volume so generated logs, the ground-truth sidecar, the 18MB
+    # stream index and the resumable cursor survive between runs.
+    - memsoc-artifacts:/artifacts
+
+services:
+
+  # Full pipeline: preflight -> start API -> classify -> report -> tear down.
+  # This is the service that owns the build.
+  pipeline:
+    <<: *common
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--flows", "100"]
+
+  # Continuous sensor emulation against the same cursor volume, so stopping
+  # and rerunning resumes the seeded sequence where it left off.
+  stream:
+    <<: *common
+    command: ["--mode", "stream", "--flows", "50", "--delay", "1.0"]
+
+  # Rebuild generated_logs.jsonl from the CSV. Needs the dataset mounted and
+  # takes a few minutes -- two full scans of 2.36M rows.
+  generate:
+    <<: *common
+    command: ["--regenerate", "--sample-size", "5000", "--flows", "10"]
+
+  # Resolved path layout and what is missing. Run this first if anything
+  # fails to find its inputs.
+  paths:
+    <<: *common
+    command: ["--paths"]
+
+  # Contract tests. The live tier needs an API, so start `api` alongside if
+  # you want that tier to run rather than skip.
+  tests:
+    <<: *common
+    entrypoint: ["python", "-m", "unittest", "discover", "-s", "/app/log_generation", "-p", "test_*.py", "-v"]
+
+  # The inference API on its own, published to the host. Use this when you
+  # want to POST flows yourself, or to drive the pipeline with --no-api.
+  api:
+    <<: *common
+    entrypoint: ["python", "-m", "uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+    working_dir: /app/final_ml_model_v1
+    ports:
+      - "8000:8000"
+
+volumes:
+  memsoc-artifacts:

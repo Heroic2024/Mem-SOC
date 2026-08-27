@@ -167,28 +167,82 @@ log generation — LightGBM handles `NaN` natively, so the rejection comes from
 the validation layer rather than the model. Flagged here; not worked around by
 altering any value.
 
-## Usage
+## Usage — one command
+
+`run_pipeline.py` is the demo entry point. It runs preflight, starts the API
+with the correct working directory, waits for the models to load, replays the
+flows, prints a summary, and shuts the API down again.
+
+```powershell
+python run_pipeline.py                  # 100 flows, batch
+python run_pipeline.py --flows 500
+python run_pipeline.py --mode stream --flows 20 --delay 1.0
+python run_pipeline.py --regenerate --sample-size 5000
+python run_pipeline.py --no-api         # reuse an API you started yourself
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--mode` | `batch` | `batch` replays `generated_logs.jsonl`; `stream` emulates a live sensor |
+| `--flows` | `100` | Flows to classify (batch) or emit this run (stream) |
+| `--unbounded` | off | Stream mode: run until Ctrl+C |
+| `--regenerate` | off | Rebuild `generated_logs.jsonl` from the CSV (slow — two full scans) |
+| `--sample-size` | `5000` | Records to write when regenerating |
+| `--delay` | `0` | Seconds between requests (batch); flow interval (stream) |
+| `--no-api` | off | Do not start uvicorn; require one already healthy |
+
+The runner **does not reimplement any stage**. It imports `nfv3_log_generator`,
+`replay_to_api` and `stream_to_api` and overrides their module-level config, so
+the 48-feature contract and the seeded ordering keep exactly one definition. Like
+the scripts it drives, it never scores against ground truth.
+
+If an API is already healthy on port 8000 it is reused and left running;
+otherwise the runner owns the process and stops it on exit. uvicorn output goes
+to `api_server.log`, not the console.
+
+Sample output:
+
+```
+  Accepted   25/25 (100.0%)
+  Latency    mean   34.0 ms   p95  111.1 ms
+
+  Verdict distribution
+    Benign             23  ##########################..
+    Attack              2  ##..........................
+
+  Attack categories
+    Exploits            2  ############################
+
+  RESULT: PIPELINE OK -- every flow classified
+```
+
+One note on stream mode: `MAX_FLOWS` inside `stream_to_api.py` is a **lifetime**
+cap measured against the resumable cursor, so setting it to 20 on a cursor that
+has already emitted 27 flows does nothing. `--flows` in the runner means "emit
+this many now" and is offset by the cursor automatically.
+
+### Running the stages by hand
 
 ```powershell
 # 1. Generate the log stream + ground truth sidecar
 python nfv3_log_generator.py
 
-# 2. Start the API -- see the note below on why cwd is src/
-cd ..\final_ml_model_v1\src
-$env:PYTHONPATH = "..\..\final_ml_model_v1"
+# 2. Start the API -- from final_ml_model_v1/, any working directory works
+cd ..\final_ml_model_v1
+$env:PYTHONPATH = "$PWD;$PWD\.."
 python -m uvicorn src.api.server:app
 
-# 3. Replay the stream into the API (from LogGeneration/)
-python replay_to_api.py
+# 3. Replay the stream into the API
+python ..\log_generation\replay_to_api.py
 ```
 
-> **Why not just `python -m uvicorn src.api.server:app` from
-> `final_ml_model_v1/`?** `InferencePipeline.__init__` defaults to
-> `models/binary_lightgbm.pkl`, but the `.pkl` files actually live in
-> `final_ml_model_v1/src/models/`. Running from `src/` makes the relative model
-> path resolve; `PYTHONPATH` keeps the `src.api.server` import working. This is
-> a path bug in `final_ml_model_v1`, not in log generation — worked around here,
-> not fixed.
+> **This used to require `cd src`.** `InferencePipeline.__init__` defaulted to
+> `models/binary_lightgbm.pkl` — a path relative to the current directory — so
+> the API only found its models when started from `final_ml_model_v1/src/`, and
+> `logger.py` wrote its `logs/` directory wherever the process happened to
+> start. Both now resolve through `paths.py`, so the working directory no
+> longer changes behaviour. `PYTHONPATH` still needs `final_ml_model_v1/` for
+> the `src.api.server` import and the repo root for `paths`.
 
 Set `LIMIT` in `replay_to_api.py` to an integer for a short smoke run before
 replaying all 5,000 records.
@@ -276,7 +330,7 @@ wraps.
 ### Running
 
 ```powershell
-# Start the API first (see the cwd/PYTHONPATH note above)
+# Start the API first (see "Running the stages by hand" above)
 python stream_to_api.py
 ```
 
@@ -302,13 +356,144 @@ status-code counts, benign/attack split). Rerun to continue.
 
 ---
 
+## Paths — one source of truth
+
+Every path in the project resolves through **`paths.py` at the repo root**. It
+anchors on its own file location, not the working directory, so the same
+command behaves identically wherever you run it.
+
+```powershell
+python paths.py                      # print the resolved layout + what is missing
+python log_generation\run_pipeline.py --paths    # same, via the runner
+```
+
+```
+  ok   ROOT                 C:\Users\...\Mem-SOC
+  ok   DATASET_CSV          C:\...\f7546561558c07c5_NFV3DATA-A11964_A11964\data\NF-UNSW-NB15-v3.csv
+  ok   BINARY_MODEL         C:\...\final_ml_model_v1\src\models\binary_lightgbm.pkl
+       ARTIFACTS_DIR        C:\...\log_generation
+```
+
+Every value is overridable by environment variable — which is how the container
+points at a dataset that cannot live in the image:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MEMSOC_ROOT` | this file's directory | Repo root |
+| `MEMSOC_DATA_DIR` | `<root>/data` | Dataset search root |
+| `MEMSOC_DATASET_CSV` | discovered | Exact CSV path, skips discovery |
+| `MEMSOC_MODELS_DIR` | `final_ml_model_v1/src/models` | `.pkl` location |
+| `MEMSOC_ARTIFACTS_DIR` | `log_generation/` | Generated logs, ground truth, stream index + cursor |
+| `MEMSOC_LOG_DIR` | `<root>/logs` | Application logs |
+| `MEMSOC_API_HOST` / `MEMSOC_API_BIND` / `MEMSOC_API_PORT` | `127.0.0.1` / same / `8000` | Connect address vs. bind interface |
+
+The dataset is **discovered, not hardcoded** — `find_dataset()` walks
+`MEMSOC_DATA_DIR` looking for `NF-UNSW-NB15-v3.csv`, so the opaque
+`f7546561558c07c5_NFV3DATA-A11964_A11964/` directory name is not baked into any
+script, and a bind mount can place the file at any depth.
+
+### What this replaced
+
+- `InferencePipeline.__init__` defaulted to `models/binary_lightgbm.pkl`,
+  relative to the CWD, so the API only started from `final_ml_model_v1/src/`.
+- `logger.py` used `LOG_DIR = "logs"`, also CWD-relative, which is why log
+  directories appeared under both `final_ml_model_v1/` and
+  `final_ml_model_v1/src/`.
+- `nfv3_log_generator.py` reached the dataset via `..\data\...`, so it only ran
+  from `log_generation/`.
+
+All three now read from `paths.py`. Two files outside `log_generation/` were
+touched to do it — `src/inference/inference_pipeline.py` (two default path
+arguments) and `src/utils/logger.py` (`LOG_DIR`). **No model weights,
+thresholds, feature logic, or prompt text were changed.**
+
+---
+
+## Docker
+
+The image carries the code and both LightGBM pickles. It does **not** carry the
+NF-UNSW-NB15-v3 CSV — that is multi-GB and cannot be committed, so it is
+bind-mounted read-only at `/data` and located by discovery.
+
+**Step-by-step instructions are in [`DOCKER.md`](../DOCKER.md).**
+What follows is the design reference behind them.
+
+### Layout
+
+| Container path | What | Backed by |
+|---|---|---|
+| `/app` | Code + model pickles | The image |
+| `/data` | NF-UNSW-NB15-v3 CSV | Bind mount, read-only |
+| `/artifacts` | Generated logs, ground truth, 18MB stream index, stream cursor | Named volume `memsoc-artifacts` |
+| `/app/logs` | Application logs | Container filesystem |
+
+The artifacts volume is what makes the stream resumable across container
+restarts — the seeded cursor in `stream_state.json` survives, so
+`docker compose run --rm stream` twice continues the same sequence rather than
+replaying it.
+
+### Notes
+
+- Base image is `python:3.13` rather than `-slim` **on purpose**: it already
+  ships `libgomp1` (LightGBM's OpenMP runtime, without which the import fails)
+  and `curl` for the healthcheck. `-slim` needs an `apt-get` layer for both,
+  which is the one build step that depends on reaching `deb.debian.org`.
+- `requirements-runtime.txt` is separate from
+  `final_ml_model_v1/requirements.txt`, which is a 121-package UTF-16 `pip
+  freeze` of the Jupyter research environment. That file is left untouched;
+  the runtime list is the minimal set actually imported, pinned to the versions
+  the models were validated against — joblib unpickles LightGBM and
+  scikit-learn objects, so version drift here is a correctness risk.
+- The `api` service publishes port 8000 and declares a healthcheck with a 90s
+  start period, since loading the 35MB multiclass model takes ~10s.
+- Host and container share nothing but the mounts, so you can run
+  `docker compose up api` and drive it from the host with
+  `python log_generation\run_pipeline.py --no-api`.
+
+---
+
+## Tests
+
+```powershell
+python -m unittest test_pipeline -v
+```
+
+Stdlib `unittest`, no new dependencies. Three tiers, each skipping cleanly when
+its input is missing — so the suite runs on a fresh clone and is complete on a
+fully set-up machine.
+
+| Tier | Needs | Guards |
+|---|---|---|
+| Schema | nothing | `DROP_COLUMNS` still equals the list in `feature_engineering.py` — **parsed from that source file, not copied**; 7 drops including `DNS_QUERY_ID`; 55 columns → 48 features |
+| Artifact | `generated_logs.jsonl` | All 48 features present and flat at top level; **no `Label`/`Attack` leakage**; every value finite; uids unique; ground-truth sidecar joins 1:1 |
+| Live | a healthy API | Every record accepted with 200; response carries a binary verdict; attack rows carry multiclass + SHAP + alert; **negative control** — dropping one feature must return 400 |
+
+The schema tier is the one that matters long-term. It fails if the model's
+preprocessing changes and the generator silently drifts away from it — the
+failure mode that would corrupt results without ever throwing.
+
+The live tier skips unless something is healthy on port 8000, so run
+`run_pipeline.py --no-api` against a server you started by hand, or start one
+first, to exercise it.
+
 ## Files
 
 | File | Role |
 |---|---|
+| `run_pipeline.py` | **Entry point.** Orchestrates generate → serve → classify → report |
 | `nfv3_log_generator.py` | NF-UNSW-NB15-v3 CSV → `generated_logs.jsonl` + `ground_truth.csv` |
 | `replay_to_api.py` | `generated_logs.jsonl` → `POST /api/logs`, reports status and verdict |
 | `stream_to_api.py` | Continuous sensor-style stream → `POST /api/logs`, resumable |
+| `test_pipeline.py` | Contract tests — schema, artifact, live acceptance |
+
+Repo-root files this directory depends on:
+
+| File | Role |
+|---|---|
+| `paths.py` | **Single source of truth for every path.** Env-overridable |
+| `Dockerfile` | Image: code + model pickles, dataset bind-mounted |
+| `docker-compose.yml` | Service definitions and volume wiring |
+| `requirements-runtime.txt` | Minimal pinned runtime deps for the image |
 
 ## Requirements
 
@@ -316,7 +501,11 @@ status-code counts, benign/attack split). Rerun to continue.
 pip install pandas numpy requests
 ```
 
-No API keys, no LLM calls. Pure pandas/numpy.
+No API keys, no LLM calls for log generation itself.
+
+`run_pipeline.py` additionally starts the inference API as a subprocess, so
+`final_ml_model_v1/requirements.txt` (fastapi, uvicorn, lightgbm, shap, joblib)
+must be installed in the same interpreter.
 
 ---
 

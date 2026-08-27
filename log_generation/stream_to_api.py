@@ -27,11 +27,18 @@ import csv
 import json
 import math
 import os
+import sys
 import time
 from collections import Counter
 
 import numpy as np
 import requests
+
+# Repo root on sys.path before importing the shared path module. This runs
+# ahead of the generator import below, so it cannot rely on that bootstrap.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import paths                                          # noqa: E402
 
 from nfv3_log_generator import (
     INPUT_CSV,
@@ -45,15 +52,15 @@ from replay_to_api import describe
 # ---------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------
-API_URL = "http://127.0.0.1:8000/api/logs"
+API_URL = paths.API_URL
 
 FLOW_INTERVAL = 0.5    # seconds between flows
 MAX_FLOWS = None       # set to an int to stop after N flows
 
-INDEX_FILE = "stream_index.npy"
-STATE_FILE = "stream_state.json"
-STREAM_LOG = "stream_log.jsonl"
-STREAM_GROUND_TRUTH = "stream_ground_truth.csv"
+INDEX_FILE = paths.STREAM_INDEX
+STATE_FILE = paths.STREAM_STATE
+STREAM_LOG = paths.STREAM_LOG
+STREAM_GROUND_TRUTH = paths.STREAM_GROUND_TRUTH
 
 
 # ---------------------------------------------------------------------

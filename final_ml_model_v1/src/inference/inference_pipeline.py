@@ -1,5 +1,21 @@
+import os
+import sys
+
 import joblib
 import pandas as pd
+
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))
+            )
+        )
+    )
+)
+
+import paths
 
 from src.utils.logger import inference_logger
 from src.explain.shap_explainer import SHAPExplainer
@@ -23,8 +39,8 @@ class InferencePipeline:
 
     def __init__(
         self,
-        binary_model_path="models/binary_lightgbm.pkl",
-        multiclass_model_path="models/multiclass_lightgbm.pkl",
+        binary_model_path=paths.BINARY_MODEL,
+        multiclass_model_path=paths.MULTICLASS_MODEL,
     ):
 
         inference_logger.info("========== INITIALIZING INFERENCE PIPELINE ==========")

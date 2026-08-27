@@ -2,8 +2,25 @@ import logging
 import os
 import sys
 
+# Repo root on sys.path so the shared path module resolves regardless of
+# where this process was started from.
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))
+            )
+        )
+    )
+)
 
-LOG_DIR = "logs"
+import paths
+
+
+# Was "logs" relative to the CWD, which scattered log files into whichever
+# directory the process happened to start in.
+LOG_DIR = paths.LOG_DIR
 
 os.makedirs(
     LOG_DIR,
