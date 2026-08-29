@@ -52,6 +52,11 @@ RISK_THRESHOLDS = (
     (0.00, "Low"),
 )
 
+# Fixed display order, used everywhere a severity breakdown is rendered
+# (report tables and the dashboard) so charts and tables always agree on
+# ordering regardless of dict/Counter iteration order.
+SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
+
 
 def risk_score(confidence: float, category: str) -> float:
     weight = SEVERITY_WEIGHTS.get(category, DEFAULT_SEVERITY_WEIGHT)
@@ -146,6 +151,21 @@ def compute_statistics(results):
 
     category_breakdown.sort(key=lambda c: c["risk_score"], reverse=True)
 
+    # Severity distribution over EVERY attack, not just the capped
+    # findings sample -- computed the same way as build_findings() does
+    # per-flow, so the dashboard's severity chart reflects the true
+    # population rather than an artifact of the findings cap.
+    severity_counter = Counter()
+    for a in attacks:
+        if not a.get("multiclass"):
+            continue
+        score = risk_score(a["multiclass"]["confidence"], a["multiclass"]["prediction"])
+        severity_counter[risk_level(score)] += 1
+
+    severity_distribution = {
+        level: severity_counter.get(level, 0) for level in SEVERITY_ORDER
+    }
+
     # Protocol distribution is read from the model's own alert output
     # (alert.protocol), not from the raw log envelope's "proto" string --
     # the model does emit protocol, so there's no reason to fall back to
@@ -195,6 +215,7 @@ def compute_statistics(results):
         "attack_rate_pct": attack_rate_pct,
         "distinct_attack_categories": len(category_counter),
         "category_breakdown": category_breakdown,
+        "severity_distribution": severity_distribution,
         "protocol_distribution": dict(protocol_counter),
         "top_targeted_ports": dst_port_counter.most_common(10),
         "top_shap_indicators": shap_counter.most_common(10),

@@ -52,3 +52,10 @@ LIVE_RESULTS_PATH = MODEL_OUTPUTS_DIR / "live_results.jsonl"
 
 # Default pacing for live_capture.py --loop mode (seconds between flows).
 DEFAULT_CAPTURE_INTERVAL = 0.0
+
+# Reports are generated repeatedly as capture progresses; only the most
+# recent REPORTS_TO_KEEP survive on disk. Older report_*.json/.md pairs
+# are deleted automatically by generate_report.py after each new one is
+# written. This is an explicit, documented retention policy, not an
+# incidental side effect.
+REPORTS_TO_KEEP = 5

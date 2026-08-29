@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-08-28T15:14:10.738115+00:00",
+  "source_file": "C:\\Users\\Theodora Dsouza\\Desktop\\CAPSTONE REPO\\Mem-SOC\\LLMTriage\\model_outputs\\live_results.jsonl",
+  "flows_considered": 6525,
+  "token_budget": 256,
+  "safety_margin": 4,
+  "estimated_tokens": 237,
+  "summary": {
+    "total_flows": 6525,
+    "attack_count": 194,
+    "attack_rate_pct": 2.97,
+    "overall_risk_level": "Critical",
+    "severity_distribution": {
+      "Critical": 48,
+      "High": 35,
+      "Medium": 91,
+      "Low": 20
+    }
+  },
+  "candidates_ranked": 194,
+  "candidates_included": 5,
+  "candidates_dropped_for_budget": 189,
+  "included_case_ids": [
+    "C1424236690182-60987-4601",
+    "C1424229411741-14759-1753",
+    "C1424220145904-33348-428",
+    "C1424236771447-51025-1610",
+    "C1424257752512-47900-3673"
+  ],
+  "embedding_input_text": "FLOWS=6525 ATTACKS=194 RATE=2.97% RISK=Critical SEV=C48/H35/M91/L20\n#1 id=C1424236690182-60987-4601 cat=Shellcode sev=Critical risk=0.9093 conf=0.9572 port=13865 proto=TCP shap=[L4_DST_PORT:4.3721,LONGEST_FLOW_PKT:1.3027,RETRANSMITTED_OUT_BYTES:0.7625]\n#2 id=C1424229411741-14759-1753 cat=Exploits sev=Critical risk=0.8886 conf=0.9873 port=21 proto=TCP shap=[LONGEST_FLOW_PKT:0.8654,CLIENT_TCP_FLAGS:0.7094,MIN_TTL:0.6394]\n#3 id=C1424220145904-33348-428 cat=Exploits sev=Critical risk=0.887 conf=0.9856 port=21 proto=TCP shap=[LONGEST_FLOW_PKT:0.8048,CLIENT_TCP_FLAGS:0.7114,MIN_TTL:0.6843]\n#4 id=C1424236771447-51025-1610 cat=Exploits sev=Critical risk=0.8849 conf=0.9832 port=21 proto=TCP shap=[CLIENT_TCP_FLAGS:0.6721,LONGEST_FLOW_PKT:0.6523,MIN_TTL:0.5907]\n#5 id=C1424257752512-47900-3673 cat=Exploits sev=Critical risk=0.881 conf=0.9789 port=21 proto=TCP shap=[CLIENT_TCP_FLAGS:0.7571,LONGEST_FLOW_PKT:0.7436,MIN_TTL:0.6255]"
+}

@@ -157,23 +157,27 @@ def render_markdown(report: dict) -> str:
 
 ## 3. Statistics (Programmatically Computed)
 
-### 3.1 Attack Category Breakdown
+### 3.1 Severity Distribution (All Attacks)
+
+{_counter_table([(level, stats['severity_distribution'][level]) for level in stats['severity_distribution']], "Severity")}
+
+### 3.2 Attack Category Breakdown
 
 {_category_table(stats['category_breakdown'])}
 
-### 3.2 Confidence Distribution
+### 3.3 Confidence Distribution
 
 {_counter_table(stats['confidence_distribution'].items(), "Confidence Range")}
 
-### 3.3 Protocol Distribution (Attack Traffic)
+### 3.4 Protocol Distribution (Attack Traffic)
 
 {_counter_table(stats['protocol_distribution'].items(), "Protocol")}
 
-### 3.4 Top Targeted Destination Ports
+### 3.5 Top Targeted Destination Ports
 
 {_counter_table(stats['top_targeted_ports'], "Destination Port")}
 
-### 3.5 Most Frequent SHAP Indicators Across All Attacks
+### 3.6 Most Frequent SHAP Indicators Across All Attacks
 
 {_counter_table(stats['top_shap_indicators'], "Feature")}
 
@@ -258,6 +262,32 @@ def check_api_key() -> None:
         sys.exit(1)
 
 
+def prune_old_reports(keep: int = config.REPORTS_TO_KEEP) -> None:
+    """
+    Keep only the `keep` most recently generated report pairs; delete the
+    rest. Filenames are security_report_<YYYYMMDD_HHMMSS>.{json,md}, so
+    an alphabetical sort is also a chronological sort -- no timestamp
+    parsing needed. Only files matching that exact pattern in
+    REPORTS_DIR are ever touched.
+    """
+
+    json_reports = sorted(REPORTS_DIR.glob("security_report_*.json"))
+
+    if len(json_reports) <= keep:
+        return
+
+    for json_path in json_reports[:-keep]:
+
+        md_path = json_path.with_suffix(".md")
+
+        json_path.unlink()
+
+        if md_path.exists():
+            md_path.unlink()
+
+        print(f"Pruned old report: {json_path.stem} (keeping latest {keep})")
+
+
 def write_report(report: dict) -> None:
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -276,6 +306,8 @@ def write_report(report: dict) -> None:
 
     print(f"\nWrote {json_path}")
     print(f"Wrote {md_path}")
+
+    prune_old_reports()
 
 
 def main():

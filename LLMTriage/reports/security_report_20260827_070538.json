@@ -1,0 +1,562 @@
+{
+  "run_metadata": {
+    "generated_at": "2026-08-27T07:05:38.013836+00:00",
+    "source_file": "C:\\Users\\Theodora Dsouza\\Desktop\\CAPSTONE REPO\\Mem-SOC\\LLMTriage\\model_outputs\\live_results.jsonl",
+    "flows_in_snapshot": 5716,
+    "limit": null
+  },
+  "verified_statistics": {
+    "total_flows_processed": 5716,
+    "benign_count": 5469,
+    "attack_count": 247,
+    "attack_rate_pct": 4.32,
+    "distinct_attack_categories": 8,
+    "category_breakdown": [
+      {
+        "category": "Backdoor",
+        "count": 6,
+        "pct_of_attacks": 2.43,
+        "avg_confidence": 0.743,
+        "severity_weight": 1.0,
+        "risk_score": 0.743,
+        "risk_level": "Critical"
+      },
+      {
+        "category": "Exploits",
+        "count": 88,
+        "pct_of_attacks": 35.63,
+        "avg_confidence": 0.7821,
+        "severity_weight": 0.9,
+        "risk_score": 0.7039,
+        "risk_level": "Critical"
+      },
+      {
+        "category": "Shellcode",
+        "count": 1,
+        "pct_of_attacks": 0.4,
+        "avg_confidence": 0.7313,
+        "severity_weight": 0.95,
+        "risk_score": 0.6947,
+        "risk_level": "High"
+      },
+      {
+        "category": "DoS",
+        "count": 14,
+        "pct_of_attacks": 5.67,
+        "avg_confidence": 0.6285,
+        "severity_weight": 0.8,
+        "risk_score": 0.5028,
+        "risk_level": "High"
+      },
+      {
+        "category": "Analysis",
+        "count": 4,
+        "pct_of_attacks": 1.62,
+        "avg_confidence": 0.8254,
+        "severity_weight": 0.5,
+        "risk_score": 0.4127,
+        "risk_level": "Medium"
+      },
+      {
+        "category": "Reconnaissance",
+        "count": 29,
+        "pct_of_attacks": 11.74,
+        "avg_confidence": 0.7729,
+        "severity_weight": 0.5,
+        "risk_score": 0.3865,
+        "risk_level": "Medium"
+      },
+      {
+        "category": "Fuzzers",
+        "count": 99,
+        "pct_of_attacks": 40.08,
+        "avg_confidence": 0.6919,
+        "severity_weight": 0.55,
+        "risk_score": 0.3805,
+        "risk_level": "Medium"
+      },
+      {
+        "category": "Generic",
+        "count": 6,
+        "pct_of_attacks": 2.43,
+        "avg_confidence": 0.9357,
+        "severity_weight": 0.4,
+        "risk_score": 0.3743,
+        "risk_level": "Medium"
+      }
+    ],
+    "protocol_distribution": {
+      "TCP": 245,
+      "UDP": 2
+    },
+    "top_targeted_ports": [
+      [
+        179,
+        59
+      ],
+      [
+        80,
+        58
+      ],
+      [
+        21,
+        34
+      ],
+      [
+        445,
+        17
+      ],
+      [
+        860,
+        11
+      ],
+      [
+        111,
+        10
+      ],
+      [
+        25,
+        10
+      ],
+      [
+        1723,
+        4
+      ],
+      [
+        8080,
+        3
+      ],
+      [
+        3260,
+        3
+      ]
+    ],
+    "top_shap_indicators": [
+      [
+        "DNS_QUERY_TYPE",
+        219
+      ],
+      [
+        "MIN_TTL",
+        172
+      ],
+      [
+        "L4_DST_PORT",
+        136
+      ],
+      [
+        "LONGEST_FLOW_PKT",
+        108
+      ],
+      [
+        "RETRANSMITTED_OUT_BYTES",
+        104
+      ],
+      [
+        "L7_PROTO",
+        89
+      ],
+      [
+        "OUT_BYTES",
+        70
+      ],
+      [
+        "CLIENT_TCP_FLAGS",
+        61
+      ],
+      [
+        "IN_BYTES",
+        50
+      ],
+      [
+        "L4_SRC_PORT",
+        24
+      ]
+    ],
+    "confidence_distribution": {
+      "0.5-0.7": 85,
+      "0.7-0.9": 83,
+      "0.9-1.0": 60,
+      "<0.5": 19
+    },
+    "overall_risk_level": "Critical"
+  },
+  "detailed_findings": [
+    {
+      "uid": "C1424229411741-14759-1753",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9873,
+      "risk_score": 0.8886,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424229411741-14759-1753",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9873,
+      "risk_score": 0.8886,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424220145904-33348-428",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9856,
+      "risk_score": 0.887,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424220145904-33348-428",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9856,
+      "risk_score": 0.887,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424236771447-51025-1610",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9832,
+      "risk_score": 0.8849,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "LONGEST_FLOW_PKT",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424236771447-51025-1610",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9832,
+      "risk_score": 0.8849,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "LONGEST_FLOW_PKT",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424257752512-47900-3673",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9789,
+      "risk_score": 0.881,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "LONGEST_FLOW_PKT",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424237627478-31632-1967",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9765,
+      "risk_score": 0.8789,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1421931784242-37263-2317",
+      "dst_port": 25,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9674,
+      "risk_score": 0.8707,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424255227004-36297-2812",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9672,
+      "risk_score": 0.8705,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424260210031-11699-3439",
+      "dst_port": 143,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9663,
+      "risk_score": 0.8697,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL",
+        "NUM_PKTS_1024_TO_1514_BYTES"
+      ]
+    },
+    {
+      "uid": "C1424237709587-62300-2492",
+      "dst_port": 50531,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9654,
+      "risk_score": 0.8689,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "MIN_TTL",
+        "DNS_QUERY_TYPE",
+        "LONGEST_FLOW_PKT"
+      ]
+    },
+    {
+      "uid": "C1424220298060-20956-172",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.965,
+      "risk_score": 0.8685,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424220298060-20956-172",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.965,
+      "risk_score": 0.8685,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL"
+      ]
+    },
+    {
+      "uid": "C1424231004715-60223-3260",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9645,
+      "risk_score": 0.868,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "MIN_TTL",
+        "CLIENT_TCP_FLAGS",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424229494864-10156-359",
+      "dst_port": 139,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9578,
+      "risk_score": 0.862,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "NUM_PKTS_128_TO_256_BYTES",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424229494864-10156-359",
+      "dst_port": 139,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9578,
+      "risk_score": 0.862,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "NUM_PKTS_128_TO_256_BYTES",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424246751499-28941-1124",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9543,
+      "risk_score": 0.8589,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "MIN_TTL",
+        "CLIENT_TCP_FLAGS"
+      ]
+    },
+    {
+      "uid": "C1424246751499-28941-1124",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9543,
+      "risk_score": 0.8589,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "MIN_TTL",
+        "CLIENT_TCP_FLAGS"
+      ]
+    },
+    {
+      "uid": "C1424238281076-24099-2827",
+      "dst_port": 110,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9534,
+      "risk_score": 0.8581,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424232094906-49803-2508",
+      "dst_port": 25,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9448,
+      "risk_score": 0.8503,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "CLIENT_TCP_FLAGS",
+        "MIN_TTL",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424227925663-26422-1723",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9351,
+      "risk_score": 0.8416,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424227925663-26422-1723",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9351,
+      "risk_score": 0.8416,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "LONGEST_FLOW_PKT",
+        "CLIENT_TCP_FLAGS",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424223882839-3698-3406",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9336,
+      "risk_score": 0.8402,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "MIN_TTL",
+        "CLIENT_TCP_FLAGS",
+        "DNS_QUERY_TYPE"
+      ]
+    },
+    {
+      "uid": "C1424222629736-1842-1054",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "category": "Exploits",
+      "confidence": 0.9299,
+      "risk_score": 0.8369,
+      "risk_level": "Critical",
+      "top_indicators": [
+        "MIN_TTL",
+        "DNS_QUERY_TYPE",
+        "L4_SRC_PORT"
+      ]
+    }
+  ],
+  "llm_analysis": {
+    "executive_summary": "During this monitoring window, the intrusion detection system processed 5,716 network flows, of which 4.32% were identified as malicious. The majority of threats were classified as Exploits and Backdoor attacks, both rated as Critical. The overall risk assessment for the run is Critical, indicating a high likelihood of successful compromise if left unmitigated. Immediate attention is required to address the identified vulnerabilities.",
+    "security_overview": "The system examined 5,716 flows, with 5,469 benign and 247 attack flows. Attack flows represent 4.32% of total traffic. Protocol usage was dominated by TCP (245 flows) with a negligible UDP presence (2 flows). Confidence levels were distributed as follows: 85 flows in the 0.5\u20130.7 range, 83 in 0.7\u20130.9, 60 in 0.9\u20131.0, and 19 below 0.5.",
+    "risk_analysis": "Exploits dominate the threat landscape, accounting for 35.63% of attacks and carrying a risk score of 0.7039, placing it in the Critical risk tier. Backdoor attacks, though fewer (2.43% of attacks), have the highest individual risk score of 0.743, also Critical. Shellcode and DoS attacks, with risk scores of 0.6947 and 0.5028 respectively, fall into High risk. The remaining categories\u2014Analysis, Reconnaissance, Fuzzers, and Generic\u2014are Medium risk, reflecting lower severity weights and risk scores.",
+    "threat_analysis": "The most frequently targeted ports were 179, 80, and 21, with 21 (FTP) appearing in the top 10 findings and associated with the highest risk scores (up to 0.8886). The top SHAP indicators\u2014DNS_QUERY_TYPE, MIN_TTL, and L4_DST_PORT\u2014suggest attackers are probing DNS and manipulating TTL values to evade detection. The sample findings show repeated Exploit attempts on port 21 with confidence above 0.96, reinforcing the focus on FTP services. These patterns point to a coordinated effort to exploit known vulnerabilities in legacy protocols.",
+    "recommendations": [
+      "Implement a firewall rule to block or restrict inbound traffic on port 21 (FTP) to mitigate the high volume of Exploit attempts.",
+      "Deploy additional IDS signatures and monitoring for the top SHAP indicators, particularly DNS_QUERY_TYPE and MIN_TTL, to detect stealthy reconnaissance.",
+      "Patch or upgrade services on ports 80, 179, and 445, which are among the top targeted ports and have known vulnerabilities.",
+      "Review and tighten outbound traffic controls on ports 860, 111, and 25 to reduce the attack surface.",
+      "Conduct a detailed investigation of the high\u2011confidence flows (risk_score > 0.88) to identify potential compromised hosts."
+    ],
+    "prioritized_action_plan": [
+      "Block or restrict inbound traffic on port 21 to address the most frequent Exploit attempts.",
+      "Deploy monitoring for DNS_QUERY_TYPE and MIN_TTL to detect reconnaissance activity.",
+      "Patch or upgrade services on ports 80, 179, and 445 to eliminate known vulnerabilities.",
+      "Investigate high\u2011confidence flows with risk_score above 0.88 to locate potential compromises.",
+      "Update firewall rules to limit outbound traffic on ports 860, 111, and 25."
+    ],
+    "conclusion": "The run revealed a concentrated threat of Exploit and Backdoor attacks, primarily targeting legacy protocols such as FTP. By addressing the identified high\u2011risk ports and indicators, the organization can significantly reduce its exposure. Prompt implementation of the recommended actions will strengthen the network\u2019s defensive posture."
+  },
+  "model": {
+    "provider": "groq",
+    "model_id": "openai/gpt-oss-20b",
+    "latency_ms": 4195.1892375946045
+  }
+}
