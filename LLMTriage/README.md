@@ -34,8 +34,31 @@ model_outputs/live_results.jsonl ─────────────►│
                                             statistics + LLM narrative
                                                  │
                                                  ▼
-                                     reports/security_report_<ts>.md
+                                     reports/security_report_<ts>.json / .md
+                                                 │
+                                                 ▼
+                                     [Terminal 3] report_server.py
+                                     (read-only HTTP API over reports/)
+                                                 │
+                                                 ▼
+                                     [Terminal 4] dashboard/ (React)
+                                     fetches and renders it in the browser
 ```
+
+## Presentation layer (React dashboard)
+
+A third piece, `report_server.py` + `dashboard/`, presents the reports
+visually. It is entirely a *consumer* of the two files above — it adds
+no processing of its own:
+
+| Component | Role |
+|---|---|
+| `report_server.py` | A minimal, read-only FastAPI server. Lists and serves the JSON files already sitting in `reports/` over HTTP (a browser can't read the filesystem directly). No statistics, no LLM calls, no detection logic — it never imports `stats_engine.py`, `report_prompt.py`, or `llm_client.py`. |
+| `dashboard/` | A React (Vite + JavaScript) single-page app. Fetches from `report_server.py` and renders charts, tables, and the LLM narrative. Contains no report-generation or statistics logic of its own. |
+
+See "Presentation layer architecture" and "Running the dashboard" below
+for the full data flow and startup commands, and `dashboard/README.md`
+for the frontend's own file layout.
 
 ## Setup
 
@@ -62,8 +85,10 @@ Groq deprecates this one too in the future, only `GROQ_MODEL` in
 | `report_prompt.py` | Builds the prompt from verified statistics + a findings sample; parses the LLM's narrative-only JSON response |
 | `llm_client.py` | Calls Groq's chat-completions endpoint via `requests` |
 | `generate_report.py` | Reads `live_results.jsonl`, orchestrates statistics + LLM, renders the final report |
-| `model_outputs/live_results.jsonl` | The hand-off file — one JSON line per flow, append-only |
+| `model_outputs/live_results.jsonl` | The hand-off file — one JSON line per flow, append-only. Also read independently by `memory/case_ranker/` (memory-layer case ranking/compaction — see that folder's README). Nothing here changed for that; it's just a second reader of the same file. |
 | `reports/` | Output — one `security_report_<timestamp>.json` + `.md` per report generated |
+| `report_server.py` | Read-only HTTP API exposing `reports/*.json` for the React dashboard to fetch |
+| `dashboard/` | React (Vite + JavaScript) presentation layer — fetches from `report_server.py`, renders it |
 
 ## Usage
 
@@ -143,10 +168,62 @@ JSON response only fills seven free-text fields (`executive_summary`,
 `recommendations`, `prioritized_action_plan`, `conclusion`) — there is
 no code path by which an LLM-invented number reaches a report table.
 
+## Presentation layer architecture
+
+```
+reports/*.json  (already written by generate_report.py, unchanged)
+        │
+        │  read-only file access
+        ▼
+report_server.py  (FastAPI, port 8001)
+        │  GET /api/reports        -> lightweight summary list, newest first
+        │  GET /api/reports/{name} -> one full report, verbatim
+        │  CORS enabled for local dev
+        ▼
+dashboard/  (React + Vite, port 5173)
+        │  src/api.js        -> fetch() wrappers, the only network code
+        │  src/App.jsx       -> report list + selection state, tab layout
+        │  src/sections/*    -> one component per tab (Overview, Technical
+        │                       Findings, Recommendations, Trends)
+        │  src/components/*  -> charts (Recharts), tables, badges, KPI cards
+        ▼
+   rendered in the browser
+```
+
+Nothing under `dashboard/` or in `report_server.py` computes a
+statistic, calls the LLM, or touches the detection API — they only ever
+display `verified_statistics`, `detailed_findings`, and `llm_analysis`
+exactly as `generate_report.py` wrote them.
+
+## Running the dashboard
+
+Three processes, in addition to the detection API:
+
+```powershell
+# Terminal 3 -- the report API (after at least one report exists in reports/)
+cd Mem-SOC\LLMTriage
+python -m uvicorn report_server:app --port 8001
+```
+
+```powershell
+# Terminal 4 -- the React dev server (one-time: cd dashboard && npm install)
+cd Mem-SOC\LLMTriage\dashboard
+npm run dev
+```
+
+Open the URL Vite prints (default `http://localhost:5173`). The sidebar
+lists every retained report; picking one fetches and renders it. The
+Trends tab uses the full report list, so it appears once at least 2
+reports exist.
+
 ## Note on `.gitignore`
 
-`LLMTriage/model_outputs/` and `LLMTriage/reports/` are generated output
-and are not currently covered by `.gitignore`. Per `CLAUDE.md`,
-`.gitignore` is not touched as a side effect of a feature task —
-flagging this the same way `data/` was flagged in `memory/SETUP_PLAN.md`.
-Say the word if you want it added.
+`LLMTriage/model_outputs/`, `LLMTriage/reports/`, and
+`LLMTriage/dashboard/node_modules/` are generated output/dependencies
+and are not explicitly covered by `.gitignore` under those specific
+paths (the repo root `.gitignore` does already ignore `node_modules/`
+and `*.log`/`*.csv`/etc. globally, so `dashboard/node_modules/` is
+already excluded as a side effect — `model_outputs/` and `reports/` are
+not). Per `CLAUDE.md`, `.gitignore` is not touched as a side effect of a
+feature task — flagging this the same way `data/` was flagged in
+`memory/SETUP_PLAN.md`. Say the word if you want it added.
