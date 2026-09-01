@@ -6,7 +6,11 @@ This guide explains how to operate the complete MemSOC Docker pipeline from star
 
 ## 1. MemSOC Pipeline Overview
 
-MemSOC runs as three Docker services:
+MemSOC runs as four Docker services. Three are long-running daemons
+(Detection, Report, Dashboard); the fourth, `log_generation`, is a
+one-shot container that generates flows from the NF-UNSW-NB15 dataset
+and can feed them to Detection on its own, without the host-side
+`live_capture.py` script.
 
 ```text
 Generated network flows
@@ -33,6 +37,11 @@ LLMTriage/reports/
 Dashboard :8080
 ```
 
+The containerized `log_generation` service is a separate, self-contained
+path that talks to Detection directly over the Docker network -- see
+Section 10. It does not write to `live_results.jsonl` and does not feed
+Report or Dashboard.
+
 ### Services
 
 | Service | Port | Purpose |
@@ -40,6 +49,7 @@ Dashboard :8080
 | Detection | 8000 | Performs ML-based network-flow detection |
 | Report | 8001 | Generates and serves security reports |
 | Dashboard | 8080 | Displays the generated security reports |
+| log_generation | -- | Generates flows from the dataset and classifies them against Detection (one-shot, no published port) |
 
 ---
 
@@ -90,7 +100,7 @@ Open PowerShell in the repository root:
 C:\Users\<username>\Desktop\Git Repository\Mem Soc\Mem-SOC
 ```
 
-Start all three services:
+Start all services:
 
 ```powershell
 docker compose -f .\Deployment\docker-compose.yml up -d
@@ -102,6 +112,11 @@ docker compose -f .\Deployment\docker-compose.yml up -d
 - Starts the Detection container.
 - Starts the Report container.
 - Starts the Dashboard container.
+- Builds and runs the `log_generation` container once, then lets it
+  exit -- it has no long-running process (see Section 10). On a fresh
+  artifacts volume this first run will fail until you run it with
+  `--regenerate`; that failure is expected and does not affect the other
+  three services.
 - Runs them in the background because of `-d`.
 
 Expected services:
@@ -110,6 +125,7 @@ Expected services:
 memsoc-detection
 memsoc-report
 memsoc-dashboard
+memsoc-log-generation
 ```
 
 ---
@@ -122,11 +138,18 @@ Run:
 docker compose -f .\Deployment\docker-compose.yml ps
 ```
 
-All three services should show:
+Detection, Report and Dashboard should show:
 
 ```text
 Up
 ```
+
+`log_generation` (`memsoc-log-generation`) is not a daemon -- it shows
+`Exited (0)` after a successful run. `Exited (1)` on the very first run
+is expected too, if the artifacts volume was still empty (see the
+`--regenerate` note in Section 10); rerun it with `--regenerate` and it
+will exit 0. A non-Up/Exited state on Detection, Report or Dashboard is
+the only thing here that indicates a real problem.
 
 Expected ports:
 
@@ -284,7 +307,90 @@ Pass complete: 10000/10000 flows captured.
 
 ---
 
-# 10. Reset Results Before a New Run
+# 10. Run Log Generation (Containerized Alternative)
+
+There is a fourth Compose service, `log_generation`, that is a separate
+path from Section 9's `live_capture.py`. It does not write to
+`live_results.jsonl` and it does not feed the Report or Dashboard
+services -- it is a self-contained way to generate flows from the
+NF-UNSW-NB15 dataset and classify them straight against the Detection
+container, entirely inside Docker.
+
+Use it when you want to exercise Detection without first generating
+`log_generation/generated_logs.jsonl` on the host.
+
+```text
+NF-UNSW-NB15-v3.csv (mounted at /data)
+        |
+        v
+log_generation container
+        |
+        | HTTP POST (Docker network: http://detection:8000)
+        v
+Detection API :8000
+        |
+        v
+Console summary (verdict counts, latency, HTTP status)
+```
+
+### One-time setup
+
+Point `MEMSOC_HOST_DATA` at the directory holding `NF-UNSW-NB15-v3.csv`
+(any depth -- the container walks the mount). From the repository root:
+
+```powershell
+$env:MEMSOC_HOST_DATA = "$PWD\data"
+```
+
+### Build the image
+
+```powershell
+docker compose -f .\Deployment\docker-compose.yml build log_generation
+```
+
+### First run -- build the flow log from the CSV
+
+The container's own artifacts volume starts empty, so the first run must
+regenerate `generated_logs.jsonl` from the dataset:
+
+```powershell
+docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --regenerate --sample-size 5000 --flows 100
+```
+
+This can take a minute or two -- it scans the full 2.36M-row CSV twice.
+
+### Later runs -- reuse the generated log
+
+Once `generated_logs.jsonl` exists in the artifacts volume, skip
+`--regenerate` and just classify more flows:
+
+```powershell
+docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --flows 500
+```
+
+### What happens automatically
+
+- `log_generation` waits for the Detection container's `/health` endpoint
+  before sending anything, so it is safe to run right after starting the
+  stack even while the multiclass model is still loading.
+- The container never loads a model itself -- it only sends HTTP requests
+  to Detection, the same as `live_capture.py` does from the host.
+
+### Important
+
+Because `log_generation` has no long-running process, plain
+`docker compose -f .\Deployment\docker-compose.yml up -d` will also build
+and run it once alongside Detection, Report and Dashboard, then let it
+exit. On a brand-new artifacts volume that run will fail with
+`generated_logs.jsonl not found -- run with --regenerate` (see Section 28
+Common Problems); this is expected the first time, not a broken
+deployment. Run `docker compose run --rm log_generation --regenerate ...`
+once beforehand, or just use `run --rm log_generation` on demand instead
+of relying on `up -d` to populate it.
+
+---
+
+# 11. Reset Results Before a New Run
 
 `live_capture.py` is append-only by default.
 
@@ -334,7 +440,7 @@ and it does not delete existing reports.
 
 ---
 
-# 11. Run Capture Continuously
+# 12. Run Capture Continuously
 
 To repeatedly process the generated stream:
 
@@ -356,7 +462,7 @@ Because results are append-only, each loop adds more results to `live_results.js
 
 ---
 
-# 12. Add a Delay Between Flows
+# 13. Add a Delay Between Flows
 
 To process approximately one flow per second:
 
@@ -390,7 +496,7 @@ The default interval is `0`.
 
 ---
 
-# 13. Generate a Security Report
+# 14. Generate a Security Report
 
 After capture results exist, generate a report inside the Report container:
 
@@ -420,7 +526,7 @@ The host directory is shared with the Report container.
 
 ---
 
-# 14. Generate a Small/Test Report
+# 15. Generate a Small/Test Report
 
 To generate a report using only the 10 most recently captured flows:
 
@@ -447,7 +553,7 @@ JSON + Markdown report
 
 ---
 
-# 15. Limit the Number of Findings
+# 16. Limit the Number of Findings
 
 To limit detailed findings to 25:
 
@@ -468,7 +574,7 @@ This means:
 
 ---
 
-# 16. Verify Generated Results
+# 17. Verify Generated Results
 
 Check the model-output file:
 
@@ -492,7 +598,7 @@ Get-ChildItem .\LLMTriage\reports -File |
 
 ---
 
-# 17. Verify the Shared Files from Inside Docker
+# 18. Verify the Shared Files from Inside Docker
 
 Check model outputs from the Report container:
 
@@ -517,7 +623,7 @@ on the Windows host.
 
 ---
 
-# 18. Refresh the Dashboard After Generating a Report
+# 19. Refresh the Dashboard After Generating a Report
 
 After generating a new report:
 
@@ -539,7 +645,7 @@ The dashboard should display the new flow count, attack count, attack rate, risk
 
 ---
 
-# 19. Full Normal Operating Procedure
+# 20. Full Normal Operating Procedure
 
 For a normal clean run, use this sequence.
 
@@ -609,7 +715,7 @@ The newest report should appear in the dashboard.
 
 ---
 
-# 20. Running 10,000 Flows
+# 21. Running 10,000 Flows
 
 If `generated_logs.jsonl` contains 10,000 flows and you want a clean 10,000-flow run:
 
@@ -639,7 +745,7 @@ The capture script processes the input line-by-line, so the same pipeline can pr
 
 ---
 
-# 21. Stop the Capture Program
+# 22. Stop the Capture Program
 
 If `live_capture.py` is running in the foreground:
 
@@ -653,7 +759,7 @@ If it is running with `--loop`, `Ctrl + C` stops the loop.
 
 ---
 
-# 22. Stop the Docker Pipeline
+# 23. Stop the Docker Pipeline
 
 To stop all MemSOC Compose services:
 
@@ -671,7 +777,7 @@ docker compose -f .\Deployment\docker-compose.yml start
 
 ---
 
-# 23. Stop and Remove the Compose Containers
+# 24. Stop and Remove the Compose Containers
 
 To stop and remove the containers and Compose network:
 
@@ -690,6 +796,11 @@ LLMTriage/reports/
 
 remain on the Windows host.
 
+`log_generation`'s own output (`generated_logs.jsonl`, `ground_truth.csv`)
+lives in a named Docker volume, not a host directory. Plain `down` leaves
+that volume alone; `docker compose down -v` deletes it, and the next
+`log_generation` run will need `--regenerate` again (see Section 10).
+
 Start the complete deployment again with:
 
 ```powershell
@@ -698,7 +809,7 @@ docker compose -f .\Deployment\docker-compose.yml up -d
 
 ---
 
-# 24. Check Container Logs
+# 25. Check Container Logs
 
 Detection logs:
 
@@ -734,7 +845,7 @@ to stop following the logs.
 
 ---
 
-# 25. Rebuild Images After Code Changes
+# 26. Rebuild Images After Code Changes
 
 If Detection code or its Dockerfile changes:
 
@@ -754,6 +865,12 @@ If Dashboard code or its Dockerfile changes:
 docker build -f .\Deployment\dashboard\Dockerfile -t memsoc-dashboard:latest .\Deployment\dashboard
 ```
 
+If `log_generation` code or its Dockerfile changes:
+
+```powershell
+docker build -f .\Deployment\log_generation\Dockerfile -t memsoc-log-generation:latest .\Deployment\log_generation
+```
+
 Then recreate the affected Compose services:
 
 ```powershell
@@ -762,7 +879,7 @@ docker compose -f .\Deployment\docker-compose.yml up -d
 
 ---
 
-# 26. Important Docker Build Rule
+# 27. Important Docker Build Rule
 
 Build each service using its own deployment directory.
 
@@ -784,13 +901,19 @@ Dashboard:
 docker build -f .\Deployment\dashboard\Dockerfile -t memsoc-dashboard:latest .\Deployment\dashboard
 ```
 
+log_generation:
+
+```powershell
+docker build -f .\Deployment\log_generation\Dockerfile -t memsoc-log-generation:latest .\Deployment\log_generation
+```
+
 Do not use the repository root as the build context for the Detection image.
 
 Using the deployment-specific context keeps the Docker build small and prevents the multi-GB project dataset and unrelated files from being sent to Docker.
 
 ---
 
-# 27. Common Problems
+# 28. Common Problems
 
 ## Detection container exits
 
@@ -832,7 +955,44 @@ The normal Compose containers are:
 memsoc-detection
 memsoc-report
 memsoc-dashboard
+memsoc-log-generation
 ```
+
+---
+
+## log_generation exits with "generated_logs.jsonl not found"
+
+Check:
+
+```powershell
+docker logs memsoc-log-generation --tail 50
+```
+
+This means the artifacts volume has no generated flow log yet -- expected
+on the very first run, or after `docker compose down -v` removed the
+`log_generation` artifacts volume. Fix it by regenerating once:
+
+```powershell
+docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --regenerate --sample-size 5000 --flows 100
+```
+
+See Section 10 for the full explanation.
+
+---
+
+## log_generation exits with "FAIL: ... not healthy"
+
+`wait_for_detection.py` gave up waiting for `http://detection:8000/health`
+(default timeout 180s). Check that Detection actually started:
+
+```powershell
+docker logs memsoc-detection --tail 100
+```
+
+If Detection is healthy but this still happens, confirm both containers
+are on the same Compose network by running `docker compose ps` from the
+same `docker-compose.yml` -- `log_generation` resolves `detection` by
+Compose service name, which only works within that network.
 
 ---
 
@@ -910,7 +1070,7 @@ Ctrl + R
 
 ---
 
-# 28. Recommended Daily/Normal Workflow
+# 29. Recommended Daily/Normal Workflow
 
 For a clean new experiment:
 
@@ -939,7 +1099,7 @@ docker compose -f .\Deployment\docker-compose.yml stop
 
 ---
 
-# 29. Quick Command Reference
+# 30. Quick Command Reference
 
 | Action | Command |
 |---|---|
@@ -961,10 +1121,14 @@ docker compose -f .\Deployment\docker-compose.yml stop
 | Detection logs | `docker logs memsoc-detection --tail 100` |
 | Report logs | `docker logs memsoc-report --tail 100` |
 | Dashboard logs | `docker logs memsoc-dashboard --tail 100` |
+| Build log_generation image | `docker compose -f .\Deployment\docker-compose.yml build log_generation` |
+| Regenerate flows from CSV (first run) | `docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --regenerate --sample-size 5000 --flows 100` |
+| Classify more flows (containerized) | `docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --flows 500` |
+| log_generation logs | `docker logs memsoc-log-generation --tail 100` |
 
 ---
 
-# 30. Final Operational Sequence
+# 31. Final Operational Sequence
 
 The complete MemSOC operation can be remembered as:
 
