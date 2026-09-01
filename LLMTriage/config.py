@@ -28,10 +28,14 @@ TEMPERATURE = 0
 
 # The aggregate security report has several narrative sections, so it
 # needs more headroom than a one-alert response did.
-MAX_RESPONSE_TOKENS = 4000
+MAX_RESPONSE_TOKENS = 3000
+GROQ_REASONING_EFFORT = "low"
 
 # The existing, unmodified detection API from final_ml_model_v1.
-DETECTION_API_URL = "http://127.0.0.1:8000/api/logs"
+DETECTION_API_URL = os.environ.get(
+    "DETECTION_API_URL",
+    "http://127.0.0.1:8000/api/logs"
+)
 
 # How many of the highest-risk findings to show the LLM in the prompt
 # (keeps the prompt compact) versus how many to list in the report itself
@@ -58,4 +62,4 @@ DEFAULT_CAPTURE_INTERVAL = 0.0
 # are deleted automatically by generate_report.py after each new one is
 # written. This is an explicit, documented retention policy, not an
 # incidental side effect.
-REPORTS_TO_KEEP = 5
+REPORTS_TO_KEEP = 10

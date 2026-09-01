@@ -2,16 +2,14 @@
 Groq API client for the Stage 4 report-generation pipeline.
 
 Uses `requests` directly against Groq's OpenAI-compatible chat-completions
-endpoint -- no extra SDK dependency, consistent with what the rest of this
-repo already uses (log_generation/replay_to_api.py,
-final_ml_model_v1/test_api.py both call the `requests` library directly).
+endpoint. No extra Groq SDK dependency is required.
 """
 
 import time
 
 import requests
 
-import config
+from LLMTriage import config
 
 
 class GroqAPIKeyMissing(RuntimeError):
@@ -22,7 +20,7 @@ def call_groq(prompt: str):
     """
     Send `prompt` to Groq and return (response_text, latency_ms).
 
-    Raises GroqAPIKeyMissing if config.GROQ_API_KEY is still the
+    Raises GroqAPIKeyMissing if the configured API key is still the
     placeholder. Raises requests.HTTPError on a non-2xx response.
     """
 
@@ -42,6 +40,7 @@ def call_groq(prompt: str):
         "model": config.GROQ_MODEL,
         "temperature": config.TEMPERATURE,
         "max_tokens": config.MAX_RESPONSE_TOKENS,
+        "reasoning_effort": config.GROQ_REASONING_EFFORT,
         "messages": [
             {"role": "user", "content": prompt}
         ],
@@ -67,6 +66,32 @@ def call_groq(prompt: str):
 
     body = response.json()
 
-    text = body["choices"][0]["message"]["content"]
+    try:
+        text = body["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(
+            "Groq response did not contain message content. "
+            f"Response: {body}"
+        ) from e
+
+    if not text or not text.strip():
+        finish_reason = None
+        reasoning_chars = 0
+
+        try:
+            choice = body["choices"][0]
+            finish_reason = choice.get("finish_reason")
+            reasoning = choice.get("message", {}).get("reasoning_content")
+            reasoning_chars = len(reasoning or "")
+        except (KeyError, IndexError, TypeError):
+            pass
+
+        raise RuntimeError(
+            "Groq returned an empty response. "
+            f"finish_reason={finish_reason}, "
+            f"reasoning_chars={reasoning_chars}. "
+            "The model may have exhausted its completion budget "
+            "before producing the requested report."
+        )
 
     return text, latency_ms

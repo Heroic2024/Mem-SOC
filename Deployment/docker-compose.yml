@@ -1,0 +1,40 @@
+services:
+
+  detection:
+    image: memsoc-detection:latest
+    container_name: memsoc-detection
+    environment:
+      MEMSOC_ROOT: /app
+      MEMSOC_MODELS_DIR: /app/final_ml_model_v1/src/models
+      MEMSOC_API_HOST: 0.0.0.0
+      MEMSOC_API_BIND: 0.0.0.0
+      MEMSOC_API_PORT: 8000
+      PYTHONPATH: /app:/app/final_ml_model_v1
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  report:
+    image: memsoc-report:latest
+    container_name: memsoc-report
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      DETECTION_API_URL: http://detection:8000/api/logs
+      PYTHONPATH: /app
+    volumes:
+      - ../LLMTriage/model_outputs:/app/LLMTriage/model_outputs
+      - ../LLMTriage/reports:/app/LLMTriage/reports
+    ports:
+      - "8001:8001"
+    depends_on:
+      - detection
+    restart: unless-stopped
+
+  dashboard:
+    image: memsoc-dashboard:latest
+    container_name: memsoc-dashboard
+    ports:
+      - "8080:80"
+    depends_on:
+      - report
+    restart: unless-stopped
