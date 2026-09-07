@@ -32,9 +32,3 @@ soc-triage/*
 # generated MemSOC runtime outputs
 LLMTriage/model_outputs/
 LLMTriage/reports/
-
-# Ignore JSON files
-*.json
-
-# Ignore JSONL files
-*.jsonl
