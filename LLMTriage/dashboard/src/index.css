@@ -288,6 +288,26 @@ h1, h2, h3, h4, p {
   background: var(--panel-hover);
 }
 
+.trend-period-row td {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: normal;
+}
+
+.trend-period-row:first-child td {
+  padding-top: 0;
+}
+
+.trend-period-row:hover td {
+  background: transparent;
+}
+
 /* Lists */
 .numbered-list {
   margin: 0;
