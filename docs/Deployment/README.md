@@ -314,6 +314,101 @@ Report API :8001
 Dashboard :8080
 ```
 
+## Pipeline with the memory layer
+
+The four-layer architecture from `PROJECT_BRIEF.md` §4, showing where the memory
+layer sits relative to verdict generation. Read the numbered edges in order:
+retrieval (1-3) happens **before** the verdict, write-back (4-5) **after** it.
+
+**Legend.** Solid blue = built and running today. Dashed amber = designed, not yet
+implemented.
+
+```mermaid
+%%{init: {'flowchart': {'curve': 'linear', 'nodeSpacing': 45, 'rankSpacing': 70}}}%%
+flowchart TD
+    subgraph L1["LAYER 1 &nbsp;&mdash;&nbsp; Data stream"]
+        direction TB
+        GEN["nfv3_log_generator.py<br/><small>seeded, fixed order</small>"]
+        REP["replay_to_api.py<br/>live_capture.py"]
+        GEN --> REP
+    end
+
+    subgraph L2["LAYER 2 &nbsp;&mdash;&nbsp; Detection &nbsp;(frozen)"]
+        direction TB
+        DET["Detection API :8000<br/>LightGBM &middot; POST /api/logs"]
+        OUT[("live_results.jsonl<br/>alert + confidence + SHAP")]
+        DET --> OUT
+    end
+
+    subgraph L3["LAYER 3 &nbsp;&mdash;&nbsp; MEMORY LAYER &nbsp;(Arm B only)"]
+        direction TB
+        RANK["case_ranker<br/><small>rank / select / compress &le;256 tok</small>"]
+        EMBR["Embedding model &mdash; READ<br/><small>all-MiniLM-L6-v2</small>"]
+        CHROMA[("ChromaDB &mdash; persistent<br/><small>vector + metadata + case text</small>")]
+        TOPK["top-k + similarity threshold"]
+        EMBW["Embedding model &mdash; WRITE<br/><small>same model &mdash; non-negotiable</small>"]
+        RANK --> EMBR
+        EMBR -->|"1 &middot; embed, query k-NN"| CHROMA
+        CHROMA -->|"2 &middot; nearest cases"| TOPK
+        EMBW -->|"5 &middot; upsert case"| CHROMA
+    end
+
+    subgraph L4["LAYER 4 &nbsp;&mdash;&nbsp; LLM triage &amp; reporting"]
+        direction TB
+        PROMPT["Base prompt template<br/><small>identical in both arms</small>"]
+        LLM["LLM triage &mdash; fixed model"]
+        VERDICT["VERDICT + rationale"]
+        REPORT["Report API :8001<br/>Dashboard :8080"]
+        PROMPT --> LLM
+        LLM --> VERDICT
+        VERDICT --> REPORT
+    end
+
+    REP --> DET
+    OUT --> RANK
+    TOPK -->|"3 &middot; inject precedent BEFORE verdict"| PROMPT
+    VERDICT -->|"4 &middot; write-back AFTER verdict"| EMBW
+
+    classDef built fill:#e8f0fe,stroke:#3b6ea5,stroke-width:1px,color:#12263f
+    classDef planned fill:#fdf3e3,stroke:#c98b1b,stroke-width:1px,stroke-dasharray:5 3,color:#4a3208
+    classDef store fill:#fdf3e3,stroke:#c98b1b,stroke-width:2px,stroke-dasharray:5 3,color:#4a3208
+    class GEN,REP,DET,OUT,RANK,PROMPT,LLM,VERDICT,REPORT built
+    class EMBR,EMBW,TOPK planned
+    class CHROMA store
+```
+
+**Reading the memory loop:**
+
+| Step | Edge | Phase |
+|---|---|---|
+| 1 | alert digest embedded, k-NN query issued | retrieval |
+| 2 | nearest stored cases returned | retrieval |
+| 3 | surviving cases injected into the prompt | retrieval, **before** verdict |
+| 4 | verdict + rationale handed to the write path | write-back, **after** verdict |
+| 5 | case upserted into ChromaDB | write-back |
+
+**What is deliberately not in this diagram:**
+
+- **The case schema** (which fields become embedded text vs. filterable metadata)
+  and the **case-rendering template** are not drawn, because neither is settled
+  yet — they are Phase 0 deliverables. ChromaDB appears as a single store node
+  rather than a table of fields, so nothing here invents a schema.
+- **Arm A is not drawn as a second path.** Adding a bypass edge around the memory
+  layer introduced the only edge crossing in the layout. Arm A is this same
+  diagram with Layer 3 switched off entirely: no retrieval, no injection, no
+  write-back. Per §9, Arm B is Arm A plus a toggleable module, not a parallel
+  codepath, so one diagram with a toggleable layer is the accurate picture.
+- **The embedding model is shown twice** (READ and WRITE) to keep the retrieval
+  and write-back phases visually separate. It is one model and must stay one
+  model — a mismatch makes similarity meaningless (§3, §6).
+
+**Open question flagged per `PROJECT_BRIEF.md` §5:** this diagram shows the LLM
+verdict flowing into memory, *not* ground-truth labels. Ground truth remains the
+evaluation oracle only. Whether confirmed ground-truth labels should also be
+written to the store is still undecided — doing so would turn memory into an
+oracle and inflate Arm B's results. That decision is the team's to make and is
+not implied by this diagram.
+
 ## Data and volumes
 
 The large generated dataset is kept outside the Docker images. The Report service uses host bind mounts for persistent Stage 4 output:

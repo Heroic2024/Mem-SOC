@@ -79,6 +79,8 @@ def list_reports():
 
         stats = report["verified_statistics"]
 
+        severity_distribution = stats.get("severity_distribution", {})
+
         summaries.append({
             "name": path.stem,
             "generated_at": report["run_metadata"]["generated_at"],
@@ -86,6 +88,8 @@ def list_reports():
             "attack_count": stats["attack_count"],
             "attack_rate_pct": stats["attack_rate_pct"],
             "overall_risk_level": stats["overall_risk_level"],
+            "severity_distribution": severity_distribution,
+            "critical_count": severity_distribution.get("Critical", 0),
         })
 
     return {"reports": summaries, "retention_limit": config.REPORTS_TO_KEEP}

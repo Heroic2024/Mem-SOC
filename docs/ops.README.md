@@ -87,11 +87,11 @@ docker compose -f .\Deployment\docker-compose.yml ps
 |---|---|---:|
 | `memsoc-detection` | ML detection API | 8000 |
 | `memsoc-report` | Report generation/API | 8001 |
-| `memsoc-dashboard` | Web dashboard | 8081 |
+| `memsoc-dashboard` | Web dashboard | 8080 |
 | `memsoc-log-generation` | Log-generation service | One-shot |
 | `memsoc-controller` | Interactive workflow controller | Run when needed |
 
-The dashboard uses host port **8081** because port 8080 is occupied on the current system.
+The dashboard uses host port **8080**. If a previous instance of this stack (or another project) was run with port 8081, that mapping no longer applies.
 
 ## 6. Run the MemSOC Controller
 
@@ -182,8 +182,10 @@ MemSOC WORKFLOW COMPLETE
 open:
 
 ```text
-http://localhost:8081
+http://localhost:8080
 ```
+
+If the page doesn't load but the container shows healthy, see the **`localhost` vs `127.0.0.1`** note in §17.
 
 ## 10. Complete Normal Operation
 
@@ -233,7 +235,7 @@ Press ENTER to generate the security report...
 ### Step 7 — Open dashboard
 
 ```text
-http://localhost:8081
+http://localhost:8080
 ```
 
 ### Step 8 — Stop Docker after completion
@@ -362,12 +364,13 @@ docker build --no-cache -t memsoc-controller:latest -f .\Deployment\controller\D
 ## 17. Important Operational Notes
 
 - Set `MEMSOC_HOST_DATA` again in every new PowerShell session.
-- Use dashboard port **8081**, not 8080.
+- Use dashboard port **8080**.
 - The controller is a temporary interactive container launched with `run --rm`.
 - Generated logs are accessed through the Docker named volume at `/artifacts/generated_logs.jsonl`.
 - The latest capture results are stored in `LLMTriage/model_outputs/live_results.jsonl`.
 - The controller resets `live_results.jsonl` before a new capture.
 - Security reports are stored in `LLMTriage/reports/`.
+- **`localhost` vs `127.0.0.1`:** on some Windows/WSL2 setups, a stale `wslrelay.exe` process from an unrelated WSL distro can bind `[::1]:<port>` (IPv6 loopback) ahead of Docker's own listener. Since Windows resolves `localhost` to `::1` first, this makes `http://localhost:<port>` hang or refuse even though the container is healthy. If that happens, use `http://127.0.0.1:<port>` instead — it always reaches Docker's listener. A permanent fix requires killing the stale `wslrelay.exe` process or running `wsl --shutdown` (this restarts all WSL distros, not just Docker's).
 
 ## 18. Quick Reference
 
@@ -382,7 +385,7 @@ docker build --no-cache -t memsoc-controller:latest -f .\Deployment\controller\D
 | Complete shutdown | `docker compose -f .\Deployment\docker-compose.yml down` |
 | Detection health | `Invoke-RestMethod http://localhost:8000/health` |
 | Report health | `Invoke-RestMethod http://localhost:8001/health` |
-| Dashboard | `http://localhost:8081` |
+| Dashboard | `http://localhost:8080` |
 
 ## 19. Recommended Daily Workflow
 
@@ -405,7 +408,7 @@ docker build --no-cache -t memsoc-controller:latest -f .\Deployment\controller\D
         ↓
 9. Press ENTER for report generation
         ↓
-10. Open http://localhost:8081
+10. Open http://localhost:8080
         ↓
 11. Review dashboard/report
         ↓

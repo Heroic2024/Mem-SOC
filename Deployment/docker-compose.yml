@@ -35,7 +35,7 @@ services:
     image: memsoc-dashboard:latest
     container_name: memsoc-dashboard
     ports:
-      - "8081:80"
+      - "8080:80"
     depends_on:
       - report
     restart: unless-stopped

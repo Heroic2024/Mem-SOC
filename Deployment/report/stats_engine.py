@@ -194,6 +194,21 @@ def compute_statistics(results):
         for item in (alert.get("shap_explanation") or [])[:5]:
             shap_counter[item["feature"]] += 1
 
+    # Same aggregation, restricted to Critical/High-severity attacks only.
+    # This can genuinely differ from top_shap_indicators above: a feature
+    # might be common across attacks in general without being what
+    # distinguishes the dangerous ones from the merely-flagged ones.
+    critical_high_shap_counter = Counter()
+    for a in attacks:
+        if not a.get("multiclass"):
+            continue
+        score = risk_score(a["multiclass"]["confidence"], a["multiclass"]["prediction"])
+        if risk_level(score) not in ("Critical", "High"):
+            continue
+        alert = a.get("alert") or {}
+        for item in (alert.get("shap_explanation") or [])[:5]:
+            critical_high_shap_counter[item["feature"]] += 1
+
     confidence_buckets = Counter()
     for a in attacks:
         conf = (a.get("multiclass") or {}).get("confidence")
@@ -219,6 +234,7 @@ def compute_statistics(results):
         "protocol_distribution": dict(protocol_counter),
         "top_targeted_ports": dst_port_counter.most_common(10),
         "top_shap_indicators": shap_counter.most_common(10),
+        "critical_high_shap_indicators": critical_high_shap_counter.most_common(10),
         "confidence_distribution": dict(confidence_buckets),
         "overall_risk_level": (
             category_breakdown[0]["risk_level"] if category_breakdown else "None"
