@@ -44,9 +44,13 @@ INPUT_CSV = paths.DATASET_CSV
 OUTPUT_JSONL = paths.GENERATED_LOGS
 GROUND_TRUTH_CSV = paths.GROUND_TRUTH
 
-SEED = 42              # fixed: same seed -> byte-identical output
-SAMPLE_SIZE = 5000     # flows to draw from the eligible pool
-CHUNK_SIZE = 200_000   # rows held in memory at once
+SEED = 42
+
+# The controller can override this value using MEMSOC_SAMPLE_SIZE.
+# If no value is provided, the default remains 5000.
+SAMPLE_SIZE = int(os.environ.get("MEMSOC_SAMPLE_SIZE", "5000"))
+
+CHUNK_SIZE = 200_000
 
 PROTO_MAP = {6: "tcp", 17: "udp", 1: "icmp"}
 
@@ -103,7 +107,7 @@ def eligible_mask(chunk: pd.DataFrame, feature_columns: list) -> pd.Series:
 
 
 # ---------------------------------------------------------------------
-# STEP 1: Seeded selection over eligible rows (never loads the whole file)
+# STEP 1: Seeded selection over eligible rows
 # ---------------------------------------------------------------------
 def count_eligible(path: str, feature_columns: list) -> tuple:
 
@@ -118,7 +122,10 @@ def count_eligible(path: str, feature_columns: list) -> tuple:
         total += len(chunk)
         eligible += int(eligible_mask(chunk, feature_columns).sum())
 
-        print(f"[scan {chunk_num}] {total:,} rows -- {eligible:,} eligible")
+        print(
+            f"[scan {chunk_num}] "
+            f"{total:,} rows -- {eligible:,} eligible"
+        )
 
     return total, eligible
 
@@ -134,11 +141,15 @@ def select_rows(path: str, feature_columns: list, eligible_total: int):
     rng = np.random.default_rng(SEED)
 
     wanted = set(
-        rng.choice(eligible_total, size=SAMPLE_SIZE, replace=False).tolist()
+        rng.choice(
+            eligible_total,
+            size=SAMPLE_SIZE,
+            replace=False
+        ).tolist()
     )
 
     kept = []
-    offset = 0   # position within the eligible pool, not the raw file
+    offset = 0
     found = 0
 
     for chunk_num, chunk in enumerate(
@@ -149,7 +160,8 @@ def select_rows(path: str, feature_columns: list, eligible_total: int):
         chunk = chunk[eligible_mask(chunk, feature_columns)]
 
         positions = [
-            i for i in range(len(chunk)) if offset + i in wanted
+            i for i in range(len(chunk))
+            if offset + i in wanted
         ]
 
         if positions:
@@ -159,8 +171,9 @@ def select_rows(path: str, feature_columns: list, eligible_total: int):
         offset += len(chunk)
 
         print(
-            f"[select {chunk_num}] {offset:,}/{eligible_total:,} eligible "
-            f"scanned -- {found:,}/{SAMPLE_SIZE:,} selected"
+            f"[select {chunk_num}] "
+            f"{offset:,}/{eligible_total:,} eligible scanned "
+            f"-- {found:,}/{SAMPLE_SIZE:,} selected"
         )
 
         if found == SAMPLE_SIZE:
@@ -170,7 +183,10 @@ def select_rows(path: str, feature_columns: list, eligible_total: int):
 
     # Seeded shuffle: the stream order looks unpredictable to the model,
     # but replays identically on every run.
-    return df.sample(frac=1, random_state=SEED).reset_index(drop=True)
+    return df.sample(
+        frac=1,
+        random_state=SEED
+    ).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------
@@ -210,24 +226,39 @@ def build_record(row: pd.Series, seq: int, feature_columns: list) -> dict:
     return record
 
 
-def validate_record(record: dict, feature_columns: list, seq: int) -> None:
+def validate_record(
+    record: dict,
+    feature_columns: list,
+    seq: int
+) -> None:
 
-    missing = [c for c in feature_columns if c not in record]
+    missing = [
+        c for c in feature_columns
+        if c not in record
+    ]
 
     if missing:
         raise ValueError(
-            f"record {seq}: missing features: {', '.join(missing)}"
+            f"record {seq}: missing features: "
+            f"{', '.join(missing)}"
         )
 
     # Same condition prepare_dataframe() raises on in the inference pipeline.
     bad = [
-        c for c in feature_columns
-        if pd.isna(pd.to_numeric(record[c], errors="coerce"))
+        c
+        for c in feature_columns
+        if pd.isna(
+            pd.to_numeric(
+                record[c],
+                errors="coerce"
+            )
+        )
     ]
 
     if bad:
         raise ValueError(
-            f"record {seq}: non-numeric feature values in: {', '.join(bad)}"
+            f"record {seq}: non-numeric feature values in: "
+            f"{', '.join(bad)}"
         )
 
 
@@ -244,52 +275,97 @@ def main():
     feature_columns = read_feature_columns(INPUT_CSV)
 
     print(f"Model features: {len(feature_columns)}")
+
     print(
         f"Dropped       : {len(DROP_COLUMNS)} "
         f"(2 targets + {len(DROP_COLUMNS) - 2} metadata)\n"
     )
 
-    total_rows, eligible_total = count_eligible(INPUT_CSV, feature_columns)
+    total_rows, eligible_total = count_eligible(
+        INPUT_CSV,
+        feature_columns
+    )
 
     excluded = total_rows - eligible_total
 
     print(f"\nDataset rows : {total_rows:,}")
+
     print(
         f"Excluded     : {excluded:,} "
-        f"({excluded / total_rows:.2%}) -- non-finite feature values"
+        f"({excluded / total_rows:.2%}) "
+        f"-- non-finite feature values"
     )
+
     print(f"Eligible     : {eligible_total:,}\n")
 
-    df = select_rows(INPUT_CSV, feature_columns, eligible_total)
+    df = select_rows(
+        INPUT_CSV,
+        feature_columns,
+        eligible_total
+    )
 
     benign = 0
     attack = 0
 
-    with open(OUTPUT_JSONL, "w", encoding="utf-8") as log_f, \
-            open(GROUND_TRUTH_CSV, "w", encoding="utf-8", newline="") as gt_f:
+    # "w" means every new run replaces the previous logs
+    # and previous ground-truth file.
+    with open(
+        OUTPUT_JSONL,
+        "w",
+        encoding="utf-8"
+    ) as log_f, open(
+        GROUND_TRUTH_CSV,
+        "w",
+        encoding="utf-8",
+        newline=""
+    ) as gt_f:
 
         gt_f.write("uid,label,attack\n")
 
-        for seq, (_, row) in enumerate(df.iterrows(), start=1):
+        for seq, (_, row) in enumerate(
+            df.iterrows(),
+            start=1
+        ):
 
-            record = build_record(row, seq, feature_columns)
+            record = build_record(
+                row,
+                seq,
+                feature_columns
+            )
 
-            validate_record(record, feature_columns, seq)
+            validate_record(
+                record,
+                feature_columns,
+                seq
+            )
 
-            log_f.write(json.dumps(record) + "\n")
+            log_f.write(
+                json.dumps(record) + "\n"
+            )
 
             label = int(row["Label"])
 
-            gt_f.write(f"{record['uid']},{label},{row['Attack']}\n")
+            gt_f.write(
+                f"{record['uid']},{label},{row['Attack']}\n"
+            )
 
             if label == 1:
                 attack += 1
             else:
                 benign += 1
 
-    print(f"\nDone. {benign + attack:,} records -> {OUTPUT_JSONL}")
-    print(f"Ground truth      -> {GROUND_TRUTH_CSV}")
-    print(f"Benign / Attack   : {benign:,} / {attack:,}")
+    print(
+        f"\nDone. {benign + attack:,} records "
+        f"-> {OUTPUT_JSONL}"
+    )
+
+    print(
+        f"Ground truth      -> {GROUND_TRUTH_CSV}"
+    )
+
+    print(
+        f"Benign / Attack   : {benign:,} / {attack:,}"
+    )
 
 
 if __name__ == "__main__":

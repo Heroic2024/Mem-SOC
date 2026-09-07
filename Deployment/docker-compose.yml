@@ -17,8 +17,9 @@ services:
   report:
     image: memsoc-report:latest
     container_name: memsoc-report
+    env_file:
+      - ../.env
     environment:
-      GROQ_API_KEY: ${GROQ_API_KEY}
       DETECTION_API_URL: http://detection:8000/api/logs
       PYTHONPATH: /app
     volumes:
@@ -34,7 +35,7 @@ services:
     image: memsoc-dashboard:latest
     container_name: memsoc-dashboard
     ports:
-      - "8080:80"
+      - "8081:80"
     depends_on:
       - report
     restart: unless-stopped
@@ -44,8 +45,7 @@ services:
   # git -- point MEMSOC_HOST_DATA at the directory holding
   # NF-UNSW-NB15-v3.csv (paths.py walks it, so any depth works); defaults
   # to ../data, correct for a normal checkout. One-shot job, not a daemon,
-  # so no restart policy: `docker compose up log_generation` runs the
-  # batch demo once and exits.
+  # so `docker compose up log_generation` runs the batch demo once and exits.
   log_generation:
     build:
       context: ./log_generation
@@ -67,6 +67,38 @@ services:
     depends_on:
       - detection
     command: ["--flows", "100"]
+
+  # Interactive controller for the complete MemSOC workflow.
+  # The controller generates the requested logs, starts live capture,
+  # and generates the final security report.
+  controller:
+    build:
+      context: ..
+      dockerfile: Deployment/controller/Dockerfile
+    image: memsoc-controller:latest
+    container_name: memsoc-controller
+    stdin_open: true
+    tty: true
+    environment:
+      MEMSOC_ROOT: /app
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_ARTIFACTS_DIR: /artifacts
+      MEMSOC_MODELS_DIR: /app/final_ml_model_v1/src/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+      DETECTION_API_URL: http://detection:8000/api/logs
+      PYTHONPATH: /app:/app/LLMTriage
+    env_file:
+      - ../.env
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ./detection/final_ml_model_v1/src/models:/app/final_ml_model_v1/src/models:ro
+      - memsoc-log-artifacts:/artifacts
+      - ../LLMTriage/model_outputs:/app/LLMTriage/model_outputs
+      - ../LLMTriage/reports:/app/LLMTriage/reports
+    depends_on:
+      - detection
+      - report
 
 volumes:
   memsoc-log-artifacts:
