@@ -29,3 +29,6 @@ soc-triage/*
 
 #dataset
 /data/
+# generated MemSOC runtime outputs
+LLMTriage/model_outputs/
+LLMTriage/reports/
