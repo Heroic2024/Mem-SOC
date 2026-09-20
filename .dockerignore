@@ -1,26 +1,14 @@
 # The dataset is multi-GB and cannot live in the image. It is bind-mounted
-# at /data instead -- see docker-compose.yml.
+# at /data instead -- see deploy/docker-compose.yml.
 data/
 
-# Model pickles are the one large thing that IS baked in, so they are not
-# excluded here even though .gitignore excludes them from version control.
-
-# Generated artifacts: rebuilt inside the container, or mounted as a volume.
-log_generation/generated_logs.jsonl
-log_generation/ground_truth.csv
-log_generation/stream_index.npy
-log_generation/stream_state.json
-log_generation/stream_log.jsonl
-log_generation/stream_ground_truth.csv
-log_generation/api_server.log
-log_generation/structured_intermediate.jsonl
-
-# Runtime output
+# Runtime output: regenerated inside the container, or mounted as a volume.
+artifacts/
 logs/
-final_ml_model_v1/logs/
-final_ml_model_v1/src/logs/
-final_ml_model_v1/outputs/
 *.log
+
+# Model pickles are the one large thing that IS baked into the detection
+# image, so models/ is deliberately NOT excluded here.
 
 # Python
 __pycache__/
@@ -29,14 +17,17 @@ __pycache__/
 venv/
 .venv/
 
+# Node: the dashboard image runs `npm ci` itself.
+node_modules/
+dashboard/dist/
+
 # Dev environment
 .git/
 .gitignore
 .claude/
 .env
-node_modules/
 soc-triage/
 
-# Docs are not needed at runtime, but are small and useful in the image for
-# a self-documenting demo; only the heavy notebooks are excluded.
+# Not needed at runtime.
+docs/
 *.ipynb

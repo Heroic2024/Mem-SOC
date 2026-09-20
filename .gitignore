@@ -1,34 +1,38 @@
-# pycache
+# --- Python ---
 __pycache__/
-
-# Python bytecode
 *.py[cod]
+.ipynb_checkpoints/
+venv/
+.venv/
 
-# environment variables
+# --- Secrets ---
 .env
 
-# virtual environment
-venv/
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# node_modules
+# --- Node ---
 node_modules/
+dashboard/dist/
 
-# log files, csv files, and other temporary files
+# --- Dataset (multi-GB, bind-mounted at /data instead) ---
+/data/
+
+# --- Runtime output -------------------------------------------------
+# Everything the system writes at runtime lands in artifacts/ or logs/.
+# Generated flows, the stream cursor, captured model outputs and
+# generated reports are all reproducible from a seeded run, so none of
+# them belong in version control.
+/artifacts/
+/logs/
+
+# Application logs wherever they land.
 *.log
-*.csv
+
+# --- Misc ---
 *.tmp
 *.zip
-
-# model files
 *.h5
 *.parquet
-soc-triage/*
+soc-triage/
 
-#dataset
-/data/
-# generated MemSOC runtime outputs
-LLMTriage/model_outputs/
-LLMTriage/reports/
+# NOTE: models/*.pkl ARE tracked on purpose. The detector is frozen after
+# training (PROJECT_BRIEF.md section 3) and the weights must be reproducible
+# from a checkout, so the two LightGBM pickles are committed.
