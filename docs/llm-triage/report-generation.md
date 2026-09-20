@@ -178,7 +178,8 @@ reports/*.json  (already written by generate_report.py, unchanged)
 report_server.py  (FastAPI, port 8001)
         │  GET /api/reports        -> lightweight summary list, newest first
         │  GET /api/reports/{name} -> one full report, verbatim
-        │  CORS enabled for local dev
+        │  no CORS needed -- clients reach it same-origin
+        │  via the gateway (nginx) or Vite's dev proxy
         ▼
 dashboard/  (React + Vite, port 5173)
         │  src/api.js        -> fetch() wrappers, the only network code

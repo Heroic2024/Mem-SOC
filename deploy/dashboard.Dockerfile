@@ -6,16 +6,13 @@
 #
 # Build context is the REPO ROOT, so paths below are repo-relative.
 #
-# VITE_API_URL is baked in at BUILD time, because this bundle runs in the
-# operator's browser, not in the Docker network: it must point at a
-# host-reachable address (localhost:<published report port>), never at the
-# internal `report` hostname. docker-compose.yml passes the same port it
-# publishes for the report service, so the two cannot drift apart.
+# The bundle fetches the report API at a RELATIVE path
+# (/services/report/...), which this container's own nginx proxies. So
+# there is no API URL to bake in at build time: the browser calls
+# whatever host it loaded the page from, and the image is identical
+# whatever port the report service is published on.
 
 FROM node:22-alpine AS build
-
-ARG VITE_API_URL=http://localhost:8001
-ENV VITE_API_URL=${VITE_API_URL}
 
 WORKDIR /app
 

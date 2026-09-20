@@ -37,11 +37,11 @@
 #     report         8001     MEMSOC_REPORT_PORT     8001
 #     dashboard        80     MEMSOC_DASHBOARD_PORT  8080
 #
-# The dashboard bundle runs in the operator's BROWSER, so it is built
-# against http://localhost:${MEMSOC_REPORT_PORT}, not the internal
-# `report` hostname. That is why the report port appears both as a
-# published port and as the dashboard's build arg -- one variable drives
-# both, so they cannot drift.
+# The dashboard bundle runs in the operator's BROWSER, but it no longer
+# needs to know any port: it fetches the report API at a relative path
+# that this stack's own nginx proxies. So the published ports below can
+# change freely without rebuilding the dashboard image, and the page
+# works from any host, not just localhost.
 
 name: memsoc
 
@@ -118,10 +118,6 @@ services:
     build:
       context: ..
       dockerfile: deploy/dashboard.Dockerfile
-      args:
-        # Host-reachable, because this runs in the browser. Same variable
-        # that publishes the report port above.
-        VITE_API_URL: http://localhost:${MEMSOC_REPORT_PORT:-8001}
     image: memsoc-dashboard:latest
     container_name: memsoc-dashboard
     ports:

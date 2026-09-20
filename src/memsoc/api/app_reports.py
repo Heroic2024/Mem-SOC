@@ -9,7 +9,6 @@ pickles. See memsoc/api/__init__.py for the full route table.
 """
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from memsoc.api.routes_docs import router as docs_router
 from memsoc.api.routes_reports import router
@@ -20,17 +19,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Local development only: the React dev server runs on a different port
-# (Vite default 5173) than this API, so the browser needs CORS allowed to
-# fetch across ports. This API is read-only, local-only, and serves no
-# secret data -- there is nothing here to protect with a stricter origin
-# policy for a capstone project running on localhost.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
+# No CORS middleware, deliberately. Every browser client reaches this API
+# through the gateway on its own origin -- nginx proxies /services/report/
+# in the deployed stack, and Vite proxies the same prefix in `npm run dev`
+# -- so these requests are same-origin and need no CORS headers. This used
+# to carry allow_origins=["*"] purely to work around the dashboard calling
+# a different port; that call is gone, so the wildcard goes with it.
 
 app.include_router(router)
 

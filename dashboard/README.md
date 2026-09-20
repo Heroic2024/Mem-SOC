@@ -1,10 +1,21 @@
 # MemSOC Dashboard (React)
 
-Presentation layer for Stage 4 security reports. Fetches from
-`report_server.py` (must be running at `http://127.0.0.1:8001` by
-default) and renders it — computes nothing itself.
+Presentation layer for Stage 4 security reports. Fetches from the report
+API (`src/memsoc/api/routes_reports.py`) and renders it — computes
+nothing itself.
 
 ## Run it
+
+Deployed, it is served by nginx in the same container that proxies the
+API, so there is nothing to configure:
+
+```powershell
+docker compose -f deploy/docker-compose.yml up -d
+# http://localhost:8080
+```
+
+For local development against a running report service (default
+`http://localhost:8001`):
 
 ```powershell
 npm install       # one-time
@@ -42,8 +53,19 @@ src/
 
 ## Configuration
 
-`VITE_API_URL` (optional env var) overrides the report API base URL,
-default `http://127.0.0.1:8001`.
+The report API base URL defaults to **`/services/report`** — a relative
+path. In the deployed stack this container's own nginx proxies it to the
+report service; in `npm run dev`, Vite proxies the same prefix (see
+`vite.config.js`). So the same build works on any host and on any
+published port, and the requests are same-origin.
+
+| Env var | Applies to | Default | Purpose |
+|---|---|---|---|
+| `VITE_API_URL` | build | `/services/report` | Point the bundle at some other backend. Nothing in `deploy/` sets it. |
+| `MEMSOC_REPORT_PROXY` | `npm run dev` | `http://localhost:8001` | Where the dev server forwards `/services/report`. |
+
+The `/services/report` prefix must match the `location` block in
+`deploy/nginx.conf` (backlog **BL-071**).
 
 ## Dependencies
 
