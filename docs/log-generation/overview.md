@@ -17,7 +17,7 @@ The current path runs in two modes, sharing one seed and one feature contract:
   restarts. Use for live demos.
 
 They are independent. The current path is the one that feeds
-`final_ml_model_v1`; the legacy path predates the detector integration and is
+`src/memsoc/detection`; the legacy path predates the detector integration and is
 kept for reference. Do not mix their outputs — the field sets differ and
 `log_to_jsonl.py` will reject 48-feature input.
 
@@ -51,7 +51,7 @@ kept for reference. Do not mix their outputs — the field sets differ and
 ## The 48 features
 
 `NF-UNSW-NB15-v3.csv` has **55** columns.
-`final_ml_model_v1/src/features/feature_engineering.py` drops **7** of them,
+`src/memsoc/detection/features/feature_engineering.py` drops **7** of them,
 leaving exactly 48 model inputs.
 
 | Dropped column | Why |
@@ -227,21 +227,21 @@ this many now" and is offset by the cursor automatically.
 # 1. Generate the log stream + ground truth sidecar
 python nfv3_log_generator.py
 
-# 2. Start the API -- from final_ml_model_v1/, any working directory works
-cd ..\final_ml_model_v1
+# 2. Start the API -- from src/memsoc/detection/, any working directory works
+cd ..
 $env:PYTHONPATH = "$PWD;$PWD\.."
 python -m uvicorn src.api.server:app
 
 # 3. Replay the stream into the API
-python ..\log_generation\replay_to_api.py
+python ..\src\memsoc\logstream\replay_to_api.py
 ```
 
 > **This used to require `cd src`.** `InferencePipeline.__init__` defaulted to
 > `models/binary_lightgbm.pkl` — a path relative to the current directory — so
-> the API only found its models when started from `final_ml_model_v1/src/`, and
+> the API only found its models when started from `src/memsoc/detection/`, and
 > `logger.py` wrote its `logs/` directory wherever the process happened to
 > start. Both now resolve through `paths.py`, so the working directory no
-> longer changes behaviour. `PYTHONPATH` still needs `final_ml_model_v1/` for
+> longer changes behaviour. `PYTHONPATH` still needs `src/memsoc/detection/` for
 > the `src.api.server` import and the repo root for `paths`.
 
 Set `LIMIT` in `replay_to_api.py` to an integer for a short smoke run before
@@ -364,14 +364,14 @@ command behaves identically wherever you run it.
 
 ```powershell
 python paths.py                      # print the resolved layout + what is missing
-python log_generation\run_pipeline.py --paths    # same, via the runner
+python src\memsoc\logstream\run_pipeline.py --paths    # same, via the runner
 ```
 
 ```
   ok   ROOT                 C:\Users\...\Mem-SOC
   ok   DATASET_CSV          C:\...\f7546561558c07c5_NFV3DATA-A11964_A11964\data\NF-UNSW-NB15-v3.csv
-  ok   BINARY_MODEL         C:\...\final_ml_model_v1\src\models\binary_lightgbm.pkl
-       ARTIFACTS_DIR        C:\...\log_generation
+  ok   BINARY_MODEL         C:\...\models\binary_lightgbm.pkl
+       ARTIFACTS_DIR        C:\...\artifacts
 ```
 
 Every value is overridable by environment variable — which is how the container
@@ -382,8 +382,8 @@ points at a dataset that cannot live in the image:
 | `MEMSOC_ROOT` | this file's directory | Repo root |
 | `MEMSOC_DATA_DIR` | `<root>/data` | Dataset search root |
 | `MEMSOC_DATASET_CSV` | discovered | Exact CSV path, skips discovery |
-| `MEMSOC_MODELS_DIR` | `final_ml_model_v1/src/models` | `.pkl` location |
-| `MEMSOC_ARTIFACTS_DIR` | `log_generation/` | Generated logs, ground truth, stream index + cursor |
+| `MEMSOC_MODELS_DIR` | `models` | `.pkl` location |
+| `MEMSOC_ARTIFACTS_DIR` | `src/memsoc/logstream/` | Generated logs, ground truth, stream index + cursor |
 | `MEMSOC_LOG_DIR` | `<root>/logs` | Application logs |
 | `MEMSOC_API_HOST` / `MEMSOC_API_BIND` / `MEMSOC_API_PORT` | `127.0.0.1` / same / `8000` | Connect address vs. bind interface |
 
@@ -395,14 +395,14 @@ script, and a bind mount can place the file at any depth.
 ### What this replaced
 
 - `InferencePipeline.__init__` defaulted to `models/binary_lightgbm.pkl`,
-  relative to the CWD, so the API only started from `final_ml_model_v1/src/`.
+  relative to the CWD, so the API only started from `src/memsoc/detection/`.
 - `logger.py` used `LOG_DIR = "logs"`, also CWD-relative, which is why log
-  directories appeared under both `final_ml_model_v1/` and
-  `final_ml_model_v1/src/`.
+  directories appeared under both `src/memsoc/detection/` and
+  `src/memsoc/detection/`.
 - `nfv3_log_generator.py` reached the dataset via `..\data\...`, so it only ran
-  from `log_generation/`.
+  from `src/memsoc/logstream/`.
 
-All three now read from `paths.py`. Two files outside `log_generation/` were
+All three now read from `paths.py`. Two files outside `src/memsoc/logstream/` were
 touched to do it — `src/inference/inference_pipeline.py` (two default path
 arguments) and `src/utils/logger.py` (`LOG_DIR`). **No model weights,
 thresholds, feature logic, or prompt text were changed.**
@@ -439,7 +439,7 @@ replaying it.
   and `curl` for the healthcheck. `-slim` needs an `apt-get` layer for both,
   which is the one build step that depends on reaching `deb.debian.org`.
 - `requirements-runtime.txt` is separate from
-  `final_ml_model_v1/requirements.txt`, which is a 121-package UTF-16 `pip
+  `requirements/research-lock.txt`, which is a 121-package UTF-16 `pip
   freeze` of the Jupyter research environment. That file is left untouched;
   the runtime list is the minimal set actually imported, pinned to the versions
   the models were validated against — joblib unpickles LightGBM and
@@ -448,7 +448,7 @@ replaying it.
   start period, since loading the 35MB multiclass model takes ~10s.
 - Host and container share nothing but the mounts, so you can run
   `docker compose up api` and drive it from the host with
-  `python log_generation\run_pipeline.py --no-api`.
+  `python src\memsoc\logstream\run_pipeline.py --no-api`.
 
 ---
 
@@ -504,7 +504,7 @@ pip install pandas numpy requests
 No API keys, no LLM calls for log generation itself.
 
 `run_pipeline.py` additionally starts the inference API as a subprocess, so
-`final_ml_model_v1/requirements.txt` (fastapi, uvicorn, lightgbm, shap, joblib)
+`requirements/research-lock.txt` (fastapi, uvicorn, lightgbm, shap, joblib)
 must be installed in the same interpreter.
 
 ---

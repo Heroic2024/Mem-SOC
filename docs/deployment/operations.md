@@ -7,7 +7,7 @@ This guide explains how to operate the complete MemSOC Docker pipeline from star
 ## 1. MemSOC Pipeline Overview
 
 MemSOC runs as four Docker services. Three are long-running daemons
-(Detection, Report, Dashboard); the fourth, `log_generation`, is a
+(Detection, Report, Dashboard); the fourth, `logstream`, is a
 one-shot container that generates flows from the NF-UNSW-NB15 dataset
 and can feed them to Detection on its own, without the host-side
 `live_capture.py` script.
@@ -24,20 +24,20 @@ Detection API :8000
         |
         | ML prediction
         v
-LLMTriage/model_outputs/live_results.jsonl
+artifacts/model_outputs/live_results.jsonl
         |
         v
 Report API / Report Generator :8001
         |
         | Groq API
         v
-LLMTriage/reports/
+artifacts/reports/
         |
         v
 Dashboard :8080
 ```
 
-The containerized `log_generation` service is a separate, self-contained
+The containerized `logstream` service is a separate, self-contained
 path that talks to Detection directly over the Docker network -- see
 Section 10. It does not write to `live_results.jsonl` and does not feed
 Report or Dashboard.
@@ -49,7 +49,7 @@ Report or Dashboard.
 | Detection | 8000 | Performs ML-based network-flow detection |
 | Report | 8001 | Generates and serves security reports |
 | Dashboard | 8080 | Displays the generated security reports |
-| log_generation | -- | Generates flows from the dataset and classifies them against Detection (one-shot, no published port) |
+| logstream | -- | Generates flows from the dataset and classifies them against Detection (one-shot, no published port) |
 
 ---
 
@@ -103,7 +103,7 @@ C:\Users\<username>\Desktop\Git Repository\Mem Soc\Mem-SOC
 Start all services:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 ### What this command does
@@ -112,7 +112,7 @@ docker compose -f .\Deployment\docker-compose.yml up -d
 - Starts the Detection container.
 - Starts the Report container.
 - Starts the Dashboard container.
-- Builds and runs the `log_generation` container once, then lets it
+- Builds and runs the `logstream` container once, then lets it
   exit -- it has no long-running process (see Section 10). On a fresh
   artifacts volume this first run will fail until you run it with
   `--regenerate`; that failure is expected and does not affect the other
@@ -125,7 +125,7 @@ Expected services:
 memsoc-detection
 memsoc-report
 memsoc-dashboard
-memsoc-log-generation
+memsoc-logstream
 ```
 
 ---
@@ -135,7 +135,7 @@ memsoc-log-generation
 Run:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml ps
+docker compose -f .\deploy\docker-compose.yml ps
 ```
 
 Detection, Report and Dashboard should show:
@@ -144,7 +144,7 @@ Detection, Report and Dashboard should show:
 Up
 ```
 
-`log_generation` (`memsoc-log-generation`) is not a daemon -- it shows
+`logstream` (`memsoc-logstream`) is not a daemon -- it shows
 `Exited (0)` after a successful run. `Exited (1)` on the very first run
 is expected too, if the artifacts volume was still empty (see the
 `--regenerate` note in Section 10); rerun it with `--regenerate` and it
@@ -257,13 +257,13 @@ It does not start capture or generate reports itself.
 The capture program is:
 
 ```text
-LLMTriage/live_capture.py
+src/memsoc/triage/live_capture.py
 ```
 
 It reads:
 
 ```text
-log_generation/generated_logs.jsonl
+artifacts/generated_logs.jsonl
 ```
 
 and sends each flow to:
@@ -277,7 +277,7 @@ The Detection API processes each flow and returns the ML prediction.
 The results are appended to:
 
 ```text
-LLMTriage/model_outputs/live_results.jsonl
+artifacts/model_outputs/live_results.jsonl
 ```
 
 ## Normal one-pass capture
@@ -285,7 +285,7 @@ LLMTriage/model_outputs/live_results.jsonl
 Run:
 
 ```powershell
-python .\LLMTriage\live_capture.py
+python .\src\memsoc\triage\live_capture.py
 ```
 
 ### What it does
@@ -309,7 +309,7 @@ Pass complete: 10000/10000 flows captured.
 
 # 10. Run Log Generation (Containerized Alternative)
 
-There is a fourth Compose service, `log_generation`, that is a separate
+There is a fourth Compose service, `logstream`, that is a separate
 path from Section 9's `live_capture.py`. It does not write to
 `live_results.jsonl` and it does not feed the Report or Dashboard
 services -- it is a self-contained way to generate flows from the
@@ -317,13 +317,13 @@ NF-UNSW-NB15 dataset and classify them straight against the Detection
 container, entirely inside Docker.
 
 Use it when you want to exercise Detection without first generating
-`log_generation/generated_logs.jsonl` on the host.
+`artifacts/generated_logs.jsonl` on the host.
 
 ```text
 NF-UNSW-NB15-v3.csv (mounted at /data)
         |
         v
-log_generation container
+logstream container
         |
         | HTTP POST (Docker network: http://detection:8000)
         v
@@ -345,7 +345,7 @@ $env:MEMSOC_HOST_DATA = "$PWD\data"
 ### Build the image
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml build log_generation
+docker compose -f .\deploy\docker-compose.yml build logstream
 ```
 
 ### First run -- build the flow log from the CSV
@@ -354,7 +354,7 @@ The container's own artifacts volume starts empty, so the first run must
 regenerate `generated_logs.jsonl` from the dataset:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --regenerate --sample-size 5000 --flows 100
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm logstream --regenerate --sample-size 5000 --flows 100
 ```
 
 This can take a minute or two -- it scans the full 2.36M-row CSV twice.
@@ -365,12 +365,12 @@ Once `generated_logs.jsonl` exists in the artifacts volume, skip
 `--regenerate` and just classify more flows:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --flows 500
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm logstream --flows 500
 ```
 
 ### What happens automatically
 
-- `log_generation` waits for the Detection container's `/health` endpoint
+- `logstream` waits for the Detection container's `/health` endpoint
   before sending anything, so it is safe to run right after starting the
   stack even while the multiclass model is still loading.
 - The container never loads a model itself -- it only sends HTTP requests
@@ -378,14 +378,14 @@ docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --flow
 
 ### Important
 
-Because `log_generation` has no long-running process, plain
-`docker compose -f .\Deployment\docker-compose.yml up -d` will also build
+Because `logstream` has no long-running process, plain
+`docker compose -f .\deploy\docker-compose.yml up -d` will also build
 and run it once alongside Detection, Report and Dashboard, then let it
 exit. On a brand-new artifacts volume that run will fail with
 `generated_logs.jsonl not found -- run with --regenerate` (see Section 28
 Common Problems); this is expected the first time, not a broken
-deployment. Run `docker compose run --rm log_generation --regenerate ...`
-once beforehand, or just use `run --rm log_generation` on demand instead
+deployment. Run `docker compose --profile tools run --rm logstream --regenerate ...`
+once beforehand, or just use `--profile tools run --rm logstream` on demand instead
 of relying on `up -d` to populate it.
 
 ---
@@ -409,7 +409,7 @@ already contains 5,010 results and you run another 10,000-flow capture normally,
 If you want the new run to start from an empty result file, use:
 
 ```powershell
-python .\LLMTriage\live_capture.py --reset
+python .\src\memsoc\triage\live_capture.py --reset
 ```
 
 ### What `--reset` does
@@ -427,13 +427,13 @@ Use this when you want a clean experiment/run.
 `--reset` affects:
 
 ```text
-LLMTriage/model_outputs/live_results.jsonl
+artifacts/model_outputs/live_results.jsonl
 ```
 
 It does not delete:
 
 ```text
-log_generation/generated_logs.jsonl
+artifacts/generated_logs.jsonl
 ```
 
 and it does not delete existing reports.
@@ -445,7 +445,7 @@ and it does not delete existing reports.
 To repeatedly process the generated stream:
 
 ```powershell
-python .\LLMTriage\live_capture.py --loop
+python .\src\memsoc\triage\live_capture.py --loop
 ```
 
 ### What `--loop` does
@@ -467,7 +467,7 @@ Because results are append-only, each loop adds more results to `live_results.js
 To process approximately one flow per second:
 
 ```powershell
-python .\LLMTriage\live_capture.py --interval 1.0
+python .\src\memsoc\triage\live_capture.py --interval 1.0
 ```
 
 The value is in seconds.
@@ -475,13 +475,13 @@ The value is in seconds.
 Examples:
 
 ```powershell
-python .\LLMTriage\live_capture.py --interval 0.5
+python .\src\memsoc\triage\live_capture.py --interval 0.5
 ```
 
 Approximately 0.5 seconds between flows.
 
 ```powershell
-python .\LLMTriage\live_capture.py --interval 2.0
+python .\src\memsoc\triage\live_capture.py --interval 2.0
 ```
 
 Approximately 2 seconds between flows.
@@ -489,7 +489,7 @@ Approximately 2 seconds between flows.
 For the fastest processing allowed by the API:
 
 ```powershell
-python .\LLMTriage\live_capture.py
+python .\src\memsoc\triage\live_capture.py
 ```
 
 The default interval is `0`.
@@ -519,7 +519,7 @@ The Report container:
 Reports are stored in:
 
 ```text
-LLMTriage/reports/
+artifacts/reports/
 ```
 
 The host directory is shared with the Report container.
@@ -579,20 +579,20 @@ This means:
 Check the model-output file:
 
 ```powershell
-Get-Item .\LLMTriage\model_outputs\live_results.jsonl |
+Get-Item .\artifacts\model_outputs\live_results.jsonl |
     Select-Object FullName, Length
 ```
 
 Count result lines:
 
 ```powershell
-(Get-Content .\LLMTriage\model_outputs\live_results.jsonl).Count
+(Get-Content .\artifacts\model_outputs\live_results.jsonl).Count
 ```
 
 Check reports:
 
 ```powershell
-Get-ChildItem .\LLMTriage\reports -File |
+Get-ChildItem .\artifacts\reports -File |
     Select-Object Name, Length
 ```
 
@@ -603,20 +603,20 @@ Get-ChildItem .\LLMTriage\reports -File |
 Check model outputs from the Report container:
 
 ```powershell
-docker exec memsoc-report sh -c "ls -lh /app/LLMTriage/model_outputs"
+docker exec memsoc-report sh -c "ls -lh /app/artifacts/model_outputs"
 ```
 
 Check reports:
 
 ```powershell
-docker exec memsoc-report sh -c "ls -lh /app/LLMTriage/reports"
+docker exec memsoc-report sh -c "ls -lh /app/artifacts/reports"
 ```
 
 The Report container should see the same files that exist in:
 
 ```text
-LLMTriage/model_outputs/
-LLMTriage/reports/
+artifacts/model_outputs/
+artifacts/reports/
 ```
 
 on the Windows host.
@@ -652,13 +652,13 @@ For a normal clean run, use this sequence.
 ### Step 1 — Start Docker
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 ### Step 2 — Check containers
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml ps
+docker compose -f .\deploy\docker-compose.yml ps
 ```
 
 All three should be `Up`.
@@ -680,7 +680,7 @@ healthy
 If you want the new run to contain only the current capture:
 
 ```powershell
-python .\LLMTriage\live_capture.py --reset
+python .\src\memsoc\triage\live_capture.py --reset
 ```
 
 ### Step 5 — Wait for capture to finish
@@ -720,7 +720,7 @@ The newest report should appear in the dashboard.
 If `generated_logs.jsonl` contains 10,000 flows and you want a clean 10,000-flow run:
 
 ```powershell
-python .\LLMTriage\live_capture.py --reset
+python .\src\memsoc\triage\live_capture.py --reset
 ```
 
 The program will process all 10,000 records.
@@ -764,7 +764,7 @@ If it is running with `--loop`, `Ctrl + C` stops the loop.
 To stop all MemSOC Compose services:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml stop
+docker compose -f .\deploy\docker-compose.yml stop
 ```
 
 This stops the containers but keeps them available for restarting.
@@ -772,7 +772,7 @@ This stops the containers but keeps them available for restarting.
 Start them again with:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml start
+docker compose -f .\deploy\docker-compose.yml start
 ```
 
 ---
@@ -782,7 +782,7 @@ docker compose -f .\Deployment\docker-compose.yml start
 To stop and remove the containers and Compose network:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml down
+docker compose -f .\deploy\docker-compose.yml down
 ```
 
 This does not delete the host directories mounted into the containers.
@@ -790,21 +790,21 @@ This does not delete the host directories mounted into the containers.
 Your:
 
 ```text
-LLMTriage/model_outputs/
-LLMTriage/reports/
+artifacts/model_outputs/
+artifacts/reports/
 ```
 
 remain on the Windows host.
 
-`log_generation`'s own output (`generated_logs.jsonl`, `ground_truth.csv`)
+`logstream`'s own output (`generated_logs.jsonl`, `ground_truth.csv`)
 lives in a named Docker volume, not a host directory. Plain `down` leaves
 that volume alone; `docker compose down -v` deletes it, and the next
-`log_generation` run will need `--regenerate` again (see Section 10).
+`logstream` run will need `--regenerate` again (see Section 10).
 
 Start the complete deployment again with:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 ---
@@ -850,31 +850,31 @@ to stop following the logs.
 If Detection code or its Dockerfile changes:
 
 ```powershell
-docker build -f .\Deployment\detection\Dockerfile -t memsoc-detection:latest .\Deployment\detection
+docker build -f .\Dockerfile -t memsoc-detection:latest .
 ```
 
 If Report code or its Dockerfile changes:
 
 ```powershell
-docker build -f .\Deployment\report\Dockerfile -t memsoc-report:latest .\Deployment\report
+docker build -f .\Dockerfile -t memsoc-report:latest .
 ```
 
 If Dashboard code or its Dockerfile changes:
 
 ```powershell
-docker build -f .\Deployment\dashboard\Dockerfile -t memsoc-dashboard:latest .\Deployment\dashboard
+docker build -f .\Dockerfile -t memsoc-dashboard:latest .
 ```
 
-If `log_generation` code or its Dockerfile changes:
+If `logstream` code or its Dockerfile changes:
 
 ```powershell
-docker build -f .\Deployment\log_generation\Dockerfile -t memsoc-log-generation:latest .\Deployment\log_generation
+docker build -f .\deploy\deploy\logstream.Dockerfile -t memsoc-logstream:latest .
 ```
 
 Then recreate the affected Compose services:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 ---
@@ -886,25 +886,25 @@ Build each service using its own deployment directory.
 Detection:
 
 ```powershell
-docker build -f .\Deployment\detection\Dockerfile -t memsoc-detection:latest .\Deployment\detection
+docker build -f .\Dockerfile -t memsoc-detection:latest .
 ```
 
 Report:
 
 ```powershell
-docker build -f .\Deployment\report\Dockerfile -t memsoc-report:latest .\Deployment\report
+docker build -f .\Dockerfile -t memsoc-report:latest .
 ```
 
 Dashboard:
 
 ```powershell
-docker build -f .\Deployment\dashboard\Dockerfile -t memsoc-dashboard:latest .\Deployment\dashboard
+docker build -f .\Dockerfile -t memsoc-dashboard:latest .
 ```
 
-log_generation:
+logstream:
 
 ```powershell
-docker build -f .\Deployment\log_generation\Dockerfile -t memsoc-log-generation:latest .\Deployment\log_generation
+docker build -f .\deploy\deploy\logstream.Dockerfile -t memsoc-logstream:latest .
 ```
 
 Do not use the repository root as the build context for the Detection image.
@@ -955,32 +955,32 @@ The normal Compose containers are:
 memsoc-detection
 memsoc-report
 memsoc-dashboard
-memsoc-log-generation
+memsoc-logstream
 ```
 
 ---
 
-## log_generation exits with "generated_logs.jsonl not found"
+## logstream exits with "generated_logs.jsonl not found"
 
 Check:
 
 ```powershell
-docker logs memsoc-log-generation --tail 50
+docker logs memsoc-logstream --tail 50
 ```
 
 This means the artifacts volume has no generated flow log yet -- expected
 on the very first run, or after `docker compose down -v` removed the
-`log_generation` artifacts volume. Fix it by regenerating once:
+`logstream` artifacts volume. Fix it by regenerating once:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --regenerate --sample-size 5000 --flows 100
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm logstream --regenerate --sample-size 5000 --flows 100
 ```
 
 See Section 10 for the full explanation.
 
 ---
 
-## log_generation exits with "FAIL: ... not healthy"
+## logstream exits with "FAIL: ... not healthy"
 
 `wait_for_detection.py` gave up waiting for `http://detection:8000/health`
 (default timeout 180s). Check that Detection actually started:
@@ -991,7 +991,7 @@ docker logs memsoc-detection --tail 100
 
 If Detection is healthy but this still happens, confirm both containers
 are on the same Compose network by running `docker compose ps` from the
-same `docker-compose.yml` -- `log_generation` resolves `detection` by
+same `docker-compose.yml` -- `logstream` resolves `detection` by
 Compose service name, which only works within that network.
 
 ---
@@ -1033,8 +1033,8 @@ if ($env:GROQ_API_KEY) {
 Then verify the `.env` file contains the key and restart Compose:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml down
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml down
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 Never place the real key directly in source code or commit it to Git.
@@ -1052,7 +1052,7 @@ Invoke-RestMethod http://localhost:8001/api/reports
 Check the report files:
 
 ```powershell
-Get-ChildItem .\LLMTriage\reports -File |
+Get-ChildItem .\artifacts\reports -File |
     Select-Object Name, Length
 ```
 
@@ -1076,16 +1076,16 @@ For a clean new experiment:
 
 ```powershell
 # 1. Start services
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 
 # 2. Verify services
-docker compose -f .\Deployment\docker-compose.yml ps
+docker compose -f .\deploy\docker-compose.yml ps
 
 # 3. Verify Detection
 Invoke-RestMethod http://localhost:8000/health
 
 # 4. Run a fresh capture
-python .\LLMTriage\live_capture.py --reset
+python .\src\memsoc\triage\live_capture.py --reset
 
 # 5. Generate report
 docker exec memsoc-report python generate_report.py
@@ -1094,7 +1094,7 @@ docker exec memsoc-report python generate_report.py
 # http://localhost:8080
 
 # 7. When finished, stop services
-docker compose -f .\Deployment\docker-compose.yml stop
+docker compose -f .\deploy\docker-compose.yml stop
 ```
 
 ---
@@ -1103,28 +1103,28 @@ docker compose -f .\Deployment\docker-compose.yml stop
 
 | Action | Command |
 |---|---|
-| Start all services | `docker compose -f .\Deployment\docker-compose.yml up -d` |
-| Check services | `docker compose -f .\Deployment\docker-compose.yml ps` |
-| Stop services | `docker compose -f .\Deployment\docker-compose.yml stop` |
-| Remove Compose containers | `docker compose -f .\Deployment\docker-compose.yml down` |
-| Restart stopped services | `docker compose -f .\Deployment\docker-compose.yml start` |
+| Start all services | `docker compose -f .\deploy\docker-compose.yml up -d` |
+| Check services | `docker compose -f .\deploy\docker-compose.yml ps` |
+| Stop services | `docker compose -f .\deploy\docker-compose.yml stop` |
+| Remove Compose containers | `docker compose -f .\deploy\docker-compose.yml down` |
+| Restart stopped services | `docker compose -f .\deploy\docker-compose.yml start` |
 | Detection health | `Invoke-RestMethod http://localhost:8000/health` |
 | Report health | `Invoke-RestMethod http://localhost:8001/health` |
 | List reports | `Invoke-RestMethod http://localhost:8001/api/reports` |
 | Open dashboard | `http://localhost:8080` |
-| Normal capture | `python .\LLMTriage\live_capture.py` |
-| Clean capture | `python .\LLMTriage\live_capture.py --reset` |
-| Continuous capture | `python .\LLMTriage\live_capture.py --loop` |
-| Capture with delay | `python .\LLMTriage\live_capture.py --interval 1.0` |
+| Normal capture | `python .\src\memsoc\triage\live_capture.py` |
+| Clean capture | `python .\src\memsoc\triage\live_capture.py --reset` |
+| Continuous capture | `python .\src\memsoc\triage\live_capture.py --loop` |
+| Capture with delay | `python .\src\memsoc\triage\live_capture.py --interval 1.0` |
 | Generate report | `docker exec memsoc-report python generate_report.py` |
 | Test report | `docker exec memsoc-report python generate_report.py --limit 10` |
 | Detection logs | `docker logs memsoc-detection --tail 100` |
 | Report logs | `docker logs memsoc-report --tail 100` |
 | Dashboard logs | `docker logs memsoc-dashboard --tail 100` |
-| Build log_generation image | `docker compose -f .\Deployment\docker-compose.yml build log_generation` |
-| Regenerate flows from CSV (first run) | `docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --regenerate --sample-size 5000 --flows 100` |
-| Classify more flows (containerized) | `docker compose -f .\Deployment\docker-compose.yml run --rm log_generation --flows 500` |
-| log_generation logs | `docker logs memsoc-log-generation --tail 100` |
+| Build logstream image | `docker compose -f .\deploy\docker-compose.yml build logstream` |
+| Regenerate flows from CSV (first run) | `docker compose -f .\deploy\docker-compose.yml --profile tools run --rm logstream --regenerate --sample-size 5000 --flows 100` |
+| Classify more flows (containerized) | `docker compose -f .\deploy\docker-compose.yml --profile tools run --rm logstream --flows 500` |
+| logstream logs | `docker logs memsoc-logstream --tail 100` |
 
 ---
 

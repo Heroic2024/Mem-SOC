@@ -1,3 +1,14 @@
+> **ARCHIVED — superseded.**
+>
+> An earlier, shorter operations guide that overlapped heavily with
+> what is now [`docs/deployment/operations.md`](../deployment/operations.md),
+> which is longer and more current. Kept until the two are reconciled
+> (backlog **BL-062**); the other file is authoritative.
+>
+> **Do not follow these instructions.**
+
+---
+
 # MemSOC Operations README
 
 ## 1. Overview
@@ -144,7 +155,7 @@ http://detection:8000/api/logs
 Results are written to:
 
 ```text
-LLMTriage/model_outputs/live_results.jsonl
+artifacts/model_outputs/live_results.jsonl
 ```
 
 The controller uses `--reset` before capture, so each workflow starts with a fresh `live_results.jsonl`.
@@ -162,7 +173,7 @@ Press **ENTER**.
 Reports are stored under:
 
 ```text
-LLMTriage/reports/
+artifacts/reports/
 ```
 
 The report service is available at:
@@ -355,7 +366,7 @@ Rebuild when:
 - Python dependencies change.
 - Model files baked into an image change.
 
-For example, after changing the controller or `LLMTriage/live_capture.py`:
+For example, after changing the controller or `src/memsoc/triage/live_capture.py`:
 
 ```powershell
 docker build --no-cache -t memsoc-controller:latest -f .\Deployment\controller\Dockerfile .
@@ -367,9 +378,9 @@ docker build --no-cache -t memsoc-controller:latest -f .\Deployment\controller\D
 - Use dashboard port **8080**.
 - The controller is a temporary interactive container launched with `run --rm`.
 - Generated logs are accessed through the Docker named volume at `/artifacts/generated_logs.jsonl`.
-- The latest capture results are stored in `LLMTriage/model_outputs/live_results.jsonl`.
+- The latest capture results are stored in `artifacts/model_outputs/live_results.jsonl`.
 - The controller resets `live_results.jsonl` before a new capture.
-- Security reports are stored in `LLMTriage/reports/`.
+- Security reports are stored in `artifacts/reports/`.
 - **`localhost` vs `127.0.0.1`:** on some Windows/WSL2 setups, a stale `wslrelay.exe` process from an unrelated WSL distro can bind `[::1]:<port>` (IPv6 loopback) ahead of Docker's own listener. Since Windows resolves `localhost` to `::1` first, this makes `http://localhost:<port>` hang or refuse even though the container is healthy. If that happens, use `http://127.0.0.1:<port>` instead — it always reaches Docker's listener. A permanent fix requires killing the stale `wslrelay.exe` process or running `wsl --shutdown` (this restarts all WSL distros, not just Docker's).
 
 ## 18. Quick Reference

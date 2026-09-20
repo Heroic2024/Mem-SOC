@@ -1,10 +1,10 @@
-# LLMTriage — Stage 4 Aggregate Security Report
+# Triage Layer — Stage 4 Aggregate Security Report
 
 > Standalone, memory-free. This is the report-generation half of
 > `PROJECT_BRIEF.md` §4 Layer 4. It does **not** implement the memory
 > layer (`docs/memory-layer/`), does not score against
 > `ground_truth.csv`, and does not modify anything under
-> `final_ml_model_v1/` or `log_generation/`.
+> `src/memsoc/detection/` or `src/memsoc/logstream/`.
 
 ## Two-step design
 
@@ -85,18 +85,18 @@ Groq deprecates this one too in the future, only `GROQ_MODEL` in
 | `report_prompt.py` | Builds the prompt from verified statistics + a findings sample; parses the LLM's narrative-only JSON response |
 | `llm_client.py` | Calls Groq's chat-completions endpoint via `requests` |
 | `generate_report.py` | Reads `live_results.jsonl`, orchestrates statistics + LLM, renders the final report |
-| `model_outputs/live_results.jsonl` | The hand-off file — one JSON line per flow, append-only. Also read independently by `memory/case_ranker/` (memory-layer case ranking/compaction — see that folder's README). Nothing here changed for that; it's just a second reader of the same file. |
+| `model_outputs/live_results.jsonl` | The hand-off file — one JSON line per flow, append-only. Also read independently by `src/memsoc/memory/case_ranker/` (memory-layer case ranking/compaction — see that folder's README). Nothing here changed for that; it's just a second reader of the same file. |
 | `reports/` | Output — one `security_report_<timestamp>.json` + `.md` per report generated |
 | `report_server.py` | Read-only HTTP API exposing `reports/*.json` for the React dashboard to fetch |
 | `dashboard/` | React (Vite + JavaScript) presentation layer — fetches from `report_server.py`, renders it |
 
 ## Usage
 
-Start the detection API first (see `log_generation/README.md` for the
+Start the detection API first (see `src/memsoc/logstream/README.md` for the
 cwd/PYTHONPATH note). Then, in a separate terminal:
 
 ```powershell
-cd Mem-SOC\LLMTriage
+cd Mem-SOC
 
 # Terminal A -- capture model outputs (pick one):
 python live_capture.py                    # one pass through the stream, then stop
@@ -108,7 +108,7 @@ python live_capture.py --reset            # start live_results.jsonl empty first
 ```powershell
 # Terminal B -- generate a report from whatever has been captured so far,
 # any time, whether Terminal A is still running or not:
-cd Mem-SOC\LLMTriage
+cd Mem-SOC
 $env:GROQ_API_KEY = "your-key-here"
 
 python generate_report.py                 # everything captured so far
@@ -151,7 +151,7 @@ knowing:
   presented as an attack-pattern statistic and is never given to the LLM
   as something to interpret.
 - There is **no source-IP statistic**. The model's alert deliberately
-  never includes an IP address at all (`memory/SCHEMA_DESIGN.md` B9 --
+  never includes an IP address at all (`docs/memory-layer/08-schema-design.md` B9 --
   source IP predicts the attack label with 100% accuracy on this
   dataset, so exposing it would let a report look insightful for a
   reason that has nothing to do with the model's actual detection).
@@ -201,13 +201,13 @@ Three processes, in addition to the detection API:
 
 ```powershell
 # Terminal 3 -- the report API (after at least one report exists in reports/)
-cd Mem-SOC\LLMTriage
+cd Mem-SOC
 python -m uvicorn report_server:app --port 8001
 ```
 
 ```powershell
 # Terminal 4 -- the React dev server (one-time: cd dashboard && npm install)
-cd Mem-SOC\LLMTriage\dashboard
+cd Mem-SOC\dashboard
 npm run dev
 ```
 
@@ -218,12 +218,12 @@ reports exist.
 
 ## Note on `.gitignore`
 
-`LLMTriage/model_outputs/`, `LLMTriage/reports/`, and
-`LLMTriage/dashboard/node_modules/` are generated output/dependencies
+`artifacts/model_outputs/`, `artifacts/reports/`, and
+`dashboard/node_modules/` are generated output/dependencies
 and are not explicitly covered by `.gitignore` under those specific
 paths (the repo root `.gitignore` does already ignore `node_modules/`
 and `*.log`/`*.csv`/etc. globally, so `dashboard/node_modules/` is
 already excluded as a side effect — `model_outputs/` and `reports/` are
 not). Per `CLAUDE.md`, `.gitignore` is not touched as a side effect of a
 feature task — flagging this the same way `data/` was flagged in
-`memory/SETUP_PLAN.md`. Say the word if you want it added.
+`docs/memory-layer/09-setup-plan.md`. Say the word if you want it added.

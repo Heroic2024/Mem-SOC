@@ -57,7 +57,7 @@ If the team chooses otherwise, `CaseRenderer` must render a synthetic verdict pl
 
 ### Feature selection
 
-The NF-* v3 datasets carry 55 columns — 53 flow features plus `Label` and `Attack`; 48 features survive into `X` after the drops at `final_ml_model_v1/src/features/feature_engineering.py:18-26`. Embedding all of them is counterproductive:
+The NF-* v3 datasets carry 55 columns — 53 flow features plus `Label` and `Attack`; 48 features survive into `X` after the drops at `src/memsoc/detection/features/feature_engineering.py:18-26`. Embedding all of them is counterproductive:
 
 - **Token budget.** The candidate embedding model truncates at a fixed sequence length (256 word-piece tokens for `all-MiniLM-L6-v2`, the model named as a candidate in [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §6). Dozens of labelled float values overrun it, and the model silently drops the tail — the last third of the features then contribute *nothing*, unpredictably. See [05 §Token budget](./05-configuration.md#token-budget) and [R5](./06-risks-and-limitations.md#r5--silent-truncation-at-the-token-limit).
 - **Signal dilution.** Sentence-transformer embeddings of long numeric strings compress toward each other. More numbers is not more signal.

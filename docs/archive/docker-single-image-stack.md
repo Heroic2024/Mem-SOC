@@ -1,3 +1,16 @@
+> **ARCHIVED — describes a stack that no longer exists.**
+>
+> This documented the single-image `memsoc:latest` build driven by a
+> root `Dockerfile` and `docker-compose.yml`. Both were deleted in the
+> 2026-09-20 restructure in favour of the multi-service stack in
+> `deploy/docker-compose.yml`. Its useful one-shot commands survive as
+> the `paths`, `generate` and `tests` services behind `--profile tools`.
+>
+> Kept for history. **Do not follow these instructions.**
+> Current guide: [`docs/deployment/operations.md`](../deployment/operations.md).
+
+---
+
 # Running MemSOC in Docker
 
 Build the image, run the pipeline, run the tests. Six steps.
@@ -91,10 +104,10 @@ Expected output:
   ok   ROOT                 /app
   ok   DATA_DIR             /data
   ok   DATASET_CSV          /data/.../NF-UNSW-NB15-v3.csv
-  ok   MODELS_DIR           /app/final_ml_model_v1/src/models
-  ok   BINARY_MODEL         /app/final_ml_model_v1/src/models/binary_lightgbm.pkl
-  ok   MULTICLASS_MODEL     /app/final_ml_model_v1/src/models/multiclass_lightgbm.pkl
-  ok   FEATURE_ENGINEERING  /app/final_ml_model_v1/src/features/feature_engineering.py
+  ok   MODELS_DIR           /app/models
+  ok   BINARY_MODEL         /app/models/binary_lightgbm.pkl
+  ok   MULTICLASS_MODEL     /app/models/multiclass_lightgbm.pkl
+  ok   FEATURE_ENGINEERING  /app/src/memsoc/detection/features/feature_engineering.py
        ARTIFACTS_DIR        /artifacts
 ```
 
@@ -102,7 +115,7 @@ Expected output:
 
 - `DATASET_CSV  MISSING` → Step 3 points at the wrong folder. Fix and rerun.
 - `BINARY_MODEL  MISSING` → the `.pkl` files are not in
-  `final_ml_model_v1\src\models\`. Put them there and rebuild (Step 4).
+  `src\memsoc\detection\models\`. Put them there and rebuild (Step 4).
 
 Do not continue until this is clean.
 
@@ -288,8 +301,8 @@ docker rmi memsoc:latest
 Everything works natively too:
 
 ```powershell
-python log_generation\run_pipeline.py --paths     # check paths
-python log_generation\run_pipeline.py --flows 100 # full demo
+python src\memsoc\logstream\run_pipeline.py --paths     # check paths
+python src\memsoc\logstream\run_pipeline.py --flows 100 # full demo
 python log_generation\test_pipeline.py            # tests
 ```
 

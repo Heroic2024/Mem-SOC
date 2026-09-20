@@ -34,7 +34,7 @@ So: **`docker compose build` needs to be run once and confirmed.** Steps are in
 
 ## 1. One-command pipeline runner
 
-**`log_generation/run_pipeline.py`** — replaced the three-terminal sequence
+**`src/memsoc/logstream/run_pipeline.py`** — replaced the three-terminal sequence
 (generate → start API → replay) with a single command.
 
 Four stages:
@@ -53,10 +53,10 @@ drives, it computes no metrics against ground truth — scoring belongs to the
 frozen evaluation harness.
 
 ```powershell
-python log_generation\run_pipeline.py --flows 500
-python log_generation\run_pipeline.py --mode stream --flows 20 --delay 1.0
-python log_generation\run_pipeline.py --no-api          # reuse a running API
-python log_generation\run_pipeline.py --paths           # show resolved paths
+python src\memsoc\logstream\run_pipeline.py --flows 500
+python src\memsoc\logstream\run_pipeline.py --mode stream --flows 20 --delay 1.0
+python src\memsoc\logstream\run_pipeline.py --no-api          # reuse a running API
+python src\memsoc\logstream\run_pipeline.py --paths           # show resolved paths
 ```
 
 ### One behavioural fix
@@ -70,7 +70,7 @@ offset it in the runner, so `--flows` means "emit this many now".
 
 ## 2. Test suite
 
-**`log_generation/test_pipeline.py`** — stdlib `unittest`, no new dependencies,
+**`tests/test_pipeline.py`** — stdlib `unittest`, no new dependencies,
 13 tests in three self-skipping tiers.
 
 | Tier | Needs | Guards |
@@ -97,8 +97,8 @@ how the container reaches a dataset that cannot live in the image.
 | `MEMSOC_ROOT` | the file's own directory |
 | `MEMSOC_DATA_DIR` | `<root>/data` |
 | `MEMSOC_DATASET_CSV` | discovered |
-| `MEMSOC_MODELS_DIR` | `final_ml_model_v1/src/models` |
-| `MEMSOC_ARTIFACTS_DIR` | `log_generation/` |
+| `MEMSOC_MODELS_DIR` | `models` |
+| `MEMSOC_ARTIFACTS_DIR` | `src/memsoc/logstream/` |
 | `MEMSOC_LOG_DIR` | `<root>/logs` |
 | `MEMSOC_API_HOST` / `MEMSOC_API_BIND` / `MEMSOC_API_PORT` | `127.0.0.1` / same / `8000` |
 
@@ -111,19 +111,19 @@ bind mount can put the file at any depth.
 
 - `InferencePipeline.__init__` defaulted to `models/binary_lightgbm.pkl`,
   relative to the working directory — which is why the API only started from
-  `final_ml_model_v1/src/`. **The `cd src` workaround is gone.**
+  `src/memsoc/detection/`. **The `cd src` workaround is gone.**
 - `logger.py` used `LOG_DIR = "logs"`, also relative — which is why log folders
-  exist under both `final_ml_model_v1/` and `final_ml_model_v1/src/`.
+  exist under both `src/memsoc/detection/` and `src/memsoc/detection/`.
 - `nfv3_log_generator.py` reached the dataset via `..\data\...`, so it only ran
-  from `log_generation/`.
+  from `src/memsoc/logstream/`.
 
-### Files changed outside `log_generation/`
+### Files changed outside `src/memsoc/logstream/`
 
 Flagged before editing, per `CLAUDE.md`:
 
-- `final_ml_model_v1/src/inference/inference_pipeline.py` — **two default path
+- `src/memsoc/detection/inference/inference_pipeline.py` — **two default path
   arguments only**
-- `final_ml_model_v1/src/utils/logger.py` — `LOG_DIR` only
+- `src/memsoc/detection/utils/logger.py` — `LOG_DIR` only
 
 **No model weights, thresholds, feature logic, prompt text, seeds, or metric
 definitions were changed.**
@@ -144,7 +144,7 @@ Base image is `python:3.13`, **not `-slim`, on purpose**: it already ships
 for the healthcheck. `-slim` needs an `apt-get` layer for both, and that step
 failed on this machine's network.
 
-`requirements-runtime.txt` is separate from `final_ml_model_v1/requirements.txt`,
+`requirements-runtime.txt` is separate from `requirements/research-lock.txt`,
 which is a 121-package UTF-16 `pip freeze` of the Jupyter research environment.
 `CLAUDE.md` forbids modifying lockfiles, so it was left untouched. The runtime
 list is pinned to the versions the models were validated against — joblib
@@ -166,10 +166,10 @@ runtime**.
 ### Host
 
 - Run from repo root: 20/20 HTTP 200
-- Run from `log_generation/`: 60/60 HTTP 200, mean 28.8 ms / p95 114.5 ms
+- Run from `src/memsoc/logstream/`: 60/60 HTTP 200, mean 28.8 ms / p95 114.5 ms
 - Full suite with API up: **13/13 pass**
 - Suite from an unrelated working directory: 9 pass, live tier skips correctly
-- API loads from `final_ml_model_v1/` with no `cd src`
+- API loads from `src/memsoc/detection/` with no `cd src`
 
 ### Docker (before the image was deleted)
 
@@ -224,22 +224,22 @@ platforms, which `CLAUDE.md` requires.
 | `docker-compose.yml` | Service and volume wiring |
 | `.dockerignore` | Build context exclusions |
 | `requirements-runtime.txt` | Minimal pinned runtime deps |
-| `log_generation/run_pipeline.py` | Pipeline entry point |
-| `log_generation/test_pipeline.py` | Contract tests |
+| `src/memsoc/logstream/run_pipeline.py` | Pipeline entry point |
+| `tests/test_pipeline.py` | Contract tests |
 
 ### Modified
 
 | File | Change |
 |---|---|
-| `log_generation/nfv3_log_generator.py` | Paths from `paths.py` |
-| `log_generation/replay_to_api.py` | Paths from `paths.py` |
-| `log_generation/stream_to_api.py` | Paths from `paths.py` |
-| `log_generation/README.md` | Runner, tests, paths and Docker sections |
+| `src/memsoc/logstream/nfv3_log_generator.py` | Paths from `paths.py` |
+| `src/memsoc/logstream/replay_to_api.py` | Paths from `paths.py` |
+| `src/memsoc/logstream/stream_to_api.py` | Paths from `paths.py` |
+| `src/memsoc/logstream/README.md` | Runner, tests, paths and Docker sections |
 | `README.md` | Pointer to `DOCKER.md` |
-| `final_ml_model_v1/src/inference/inference_pipeline.py` | Two default path arguments |
-| `final_ml_model_v1/src/utils/logger.py` | `LOG_DIR` |
+| `src/memsoc/detection/inference/inference_pipeline.py` | Two default path arguments |
+| `src/memsoc/detection/utils/logger.py` | `LOG_DIR` |
 
 ### Not modified
 
-`.gitignore`, `final_ml_model_v1/requirements.txt`, model weights, thresholds,
+`.gitignore`, `requirements/research-lock.txt`, model weights, thresholds,
 prompt templates, seeds, the evaluation harness, and metric definitions.

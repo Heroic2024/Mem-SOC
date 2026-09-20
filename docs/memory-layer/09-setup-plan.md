@@ -55,7 +55,7 @@ It is also the single most safety-critical component in this layer: **[Invariant
 
 **A. Python 3.13.** This machine has Python 3.13.2. `chromadb`'s support for 3.13 depends on version and on prebuilt wheels for its native dependencies. Verify the install actually succeeds before planning around it; if it fights you, a 3.11/3.12 virtualenv is the low-drama fallback.
 
-**B. Do not install into the detector's environment.** `final_ml_model_v1/requirements.txt` pins `numpy==2.4.6`, `scikit-learn==1.9.0`, `lightgbm==4.7.0`. Installing `torch` alongside them can cause pip to re-resolve `numpy`/`scipy`, which can shift LightGBM's numerics. Detector weights and thresholds are a **protected component** ([`CLAUDE.md`](../CLAUDE.md)) — a dependency bump is a silent way to violate that freeze.
+**B. Do not install into the detector's environment.** `requirements/research-lock.txt` pins `numpy==2.4.6`, `scikit-learn==1.9.0`, `lightgbm==4.7.0`. Installing `torch` alongside them can cause pip to re-resolve `numpy`/`scipy`, which can shift LightGBM's numerics. Detector weights and thresholds are a **protected component** ([`CLAUDE.md`](../CLAUDE.md)) — a dependency bump is a silent way to violate that freeze.
 
 > **Use a separate virtualenv for the memory layer.** This is the recommendation; it costs nothing and removes the risk entirely.
 
@@ -91,7 +91,7 @@ Pick the dataset the Arm A / Arm B comparison runs on end-to-end. If it is NF-CI
 
 ### 🟠 Step 3 — Approve the Layer 2 alert changes
 
-The six changes in [`SCHEMA_DESIGN.md §8`](./SCHEMA_DESIGN.md#8-what-layer-2-must-change). They are Layer 2 edits, outside this layer's scope — I will not touch `final_ml_model_v1/` without your explicit go-ahead. The two that matter most:
+The six changes in [`SCHEMA_DESIGN.md §8`](./SCHEMA_DESIGN.md#8-what-layer-2-must-change). They are Layer 2 edits, outside this layer's scope — I will not touch `src/memsoc/detection/` without your explicit go-ahead. The two that matter most:
 
 - a stable **`alert_id`** (without it, Phase 4 cannot score at all)
 - **flow feature values** in the alert, not just feature names
@@ -142,11 +142,11 @@ Note the ordering constraint from [`PROJECT_BRIEF.md`](../PROJECT_BRIEF.md) §7:
 
 | Phase 0 task ([`PROJECT_BRIEF.md`](../PROJECT_BRIEF.md) §7) | Status |
 |---|---|
-| Find the ML detector | ✅ Done — LightGBM multiclass, `final_ml_model_v1/` |
+| Find the ML detector | ✅ Done — LightGBM multiclass, `src/memsoc/detection/` |
 | Define the detector output format | 🟠 **Partial** — an alert exists and exposes `confidence`, but lacks `alert_id`, feature values, and `detector_version` |
 | Install ChromaDB + embedding model | ⬜ Not started — requirements and walkthrough ready, nothing installed |
 | Persistent mode from the start | ✅ Decided and documented; unimplemented |
-| Preprocess the dataset | 🟠 Exists in `final_ml_model_v1/` against NF-UNSW-NB15-v3; not yet run against the NF-CICIDS2018-v3 target (B8) |
+| Preprocess the dataset | 🟠 Exists in `src/memsoc/detection/` against NF-UNSW-NB15-v3; not yet run against the NF-CICIDS2018-v3 target (B8) |
 | Data consistency between layers | 🔴 **Blocked** — no stable `alert_id` (B4) |
 | **Define the case schema** | 🟠 **Field universe fixed (48 features, verified 2026-08-15); allocation drafted, not lockable** — see [`SCHEMA_DESIGN.md §2b`](./SCHEMA_DESIGN.md#2b-the-feature-universe--verified) |
 

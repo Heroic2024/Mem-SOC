@@ -28,8 +28,8 @@ MemSOC is deployed as three Docker services:
                          └──────────────────────┘
 
 Host bind mounts:
-  LLMTriage/model_outputs  <->  /app/LLMTriage/model_outputs
-  LLMTriage/reports        <->  /app/LLMTriage/reports
+  artifacts/model_outputs  <->  /app/artifacts/model_outputs
+  artifacts/reports        <->  /app/artifacts/reports
 ```
 
 ## Services
@@ -40,45 +40,44 @@ Host bind mounts:
 | report | `memsoc-report` | 8001 | Stage 4 report generation and API |
 | dashboard | `memsoc-dashboard` | 8080 | Web dashboard served by Nginx |
 
-## Deployment layout
+## Repository layout
+
+The application lives in ONE source tree. `deploy/` holds only build and
+orchestration files -- no application code, no per-service copies.
 
 ```text
-Deployment/
-├── README.md
+src/memsoc/              the whole application, one importable package
+├── paths.py             single source of truth for every path
+├── api/                 EVERY HTTP endpoint in the system
+│   ├── routes_detection.py    GET / , GET /health, POST /api/logs
+│   ├── routes_reports.py      GET /health, GET /api/reports[/{name}]
+│   ├── app_detection.py       ASGI app -> :8000
+│   ├── app_reports.py         ASGI app -> :8001
+│   └── schemas.py             shared request/response shapes
+├── detection/           Layer 2 -- frozen LightGBM + SHAP
+├── logstream/           Layer 1 -- deterministic NetFlow replay
+├── triage/              Layer 4 -- LLM triage and report generation
+├── memory/              Layer 3 -- the memory layer (research variable)
+└── controller.py        interactive end-to-end workflow driver
+
+models/                  the two LightGBM pickles (one copy)
+dashboard/               React app (Vite)
+deploy/                  Dockerfiles + compose ONLY
 ├── docker-compose.yml
-├── detection/
-│   ├── Dockerfile
-│   ├── paths.py
-│   ├── requirements-runtime.txt
-│   └── final_ml_model_v1/
-│       └── src/
-│           ├── api/
-│           ├── alerts/
-│           ├── explain/
-│           ├── features/
-│           ├── inference/
-│           ├── models/
-│           │   ├── binary_lightgbm.pkl
-│           │   └── multiclass_lightgbm.pkl
-│           └── utils/
-├── report/
-│   ├── Dockerfile
-│   ├── config.py
-│   ├── generate_report.py
-│   ├── live_capture.py
-│   ├── llm_client.py
-│   ├── report_prompt.py
-│   ├── report_server.py
-│   └── stats_engine.py
-└── dashboard/
-    ├── Dockerfile
-    ├── package.json
-    ├── package-lock.json
-    ├── vite.config.js
-    ├── index.html
-    ├── src/
-    └── public/
+├── detection.Dockerfile
+├── report.Dockerfile
+├── logstream.Dockerfile
+├── dashboard.Dockerfile
+└── controller.Dockerfile
+requirements/            one file per deployable
+artifacts/               all runtime output (gitignored)
+tests/                   contract tests + manual/ smoke scripts
+docs/
 ```
+
+Every image builds from the **repository root**, so a Dockerfile cannot
+drift from the code it ships, and `PYTHONPATH=/app/src` is the same in
+every container.
 
 ## Prerequisites
 
@@ -127,14 +126,14 @@ Compose passes the key to the report service through `${GROQ_API_KEY}`.
 Build each service using its small deployment directory as the build context:
 
 ```powershell
-docker build -f .\Deployment\detection\Dockerfile -t memsoc-detection:latest .\Deployment\detection
+docker build -f .\Dockerfile -t memsoc-detection:latest .
 
-docker build -f .\Deployment\report\Dockerfile -t memsoc-report:latest .\Deployment\report
+docker build -f .\Dockerfile -t memsoc-report:latest .
 
-docker build -f .\Deployment\dashboard\Dockerfile -t memsoc-dashboard:latest .\Deployment\dashboard
+docker build -f .\Dockerfile -t memsoc-dashboard:latest .
 ```
 
-This is important: **do not use the repository root as the build context for the detection image**. The repository contains large datasets and generated files. The dedicated `Deployment\detection` context keeps the build context small while still including the model files required by the detection image.
+This is important: **do not use the repository root as the build context for the detection image**. The repository contains large datasets and generated files. The dedicated `deploy\detection` context keeps the build context small while still including the model files required by the detection image.
 
 Check images:
 
@@ -147,13 +146,13 @@ docker images | Select-String "memsoc"
 From the repository root:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 Check status:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml ps
+docker compose -f .\deploy\docker-compose.yml ps
 ```
 
 Expected services:
@@ -221,7 +220,7 @@ Expected:
 
 ## Stage 4 capture
 
-`LLMTriage/live_capture.py` runs on the host and sends generated flows to the Detection API. The default host endpoint is:
+`src/memsoc/triage/live_capture.py` runs on the host and sends generated flows to the Detection API. The default host endpoint is:
 
 ```text
 http://127.0.0.1:8000/api/logs
@@ -230,31 +229,31 @@ http://127.0.0.1:8000/api/logs
 Normal capture:
 
 ```powershell
-python .\LLMTriage\live_capture.py
+python .\src\memsoc\triage\live_capture.py
 ```
 
 Continuous capture:
 
 ```powershell
-python .\LLMTriage\live_capture.py --loop
+python .\src\memsoc\triage\live_capture.py --loop
 ```
 
 Paced capture:
 
 ```powershell
-python .\LLMTriage\live_capture.py --interval 1.0
+python .\src\memsoc\triage\live_capture.py --interval 1.0
 ```
 
 Explicitly reset previous captured results:
 
 ```powershell
-python .\LLMTriage\live_capture.py --reset
+python .\src\memsoc\triage\live_capture.py --reset
 ```
 
 Results are appended to:
 
 ```text
-LLMTriage/model_outputs/live_results.jsonl
+artifacts/model_outputs/live_results.jsonl
 ```
 
 ## Report generation
@@ -280,7 +279,7 @@ docker exec memsoc-report python generate_report.py --max-findings 25
 Reports are written to:
 
 ```text
-LLMTriage/reports/
+artifacts/reports/
 ```
 
 The Report API exposes them through:
@@ -295,19 +294,19 @@ GET /api/reports/{name}
 ```text
 Generated network flows
         ↓
-LLMTriage/live_capture.py
+src/memsoc/triage/live_capture.py
         ↓
 Detection API :8000
         ↓
 LightGBM inference
         ↓
-LLMTriage/model_outputs/live_results.jsonl
+artifacts/model_outputs/live_results.jsonl
         ↓
 Report container
         ↓
 Groq analysis
         ↓
-LLMTriage/reports/
+artifacts/reports/
         ↓
 Report API :8001
         ↓
@@ -414,8 +413,8 @@ not implied by this diagram.
 The large generated dataset is kept outside the Docker images. The Report service uses host bind mounts for persistent Stage 4 output:
 
 ```text
-LLMTriage/model_outputs -> /app/LLMTriage/model_outputs
-LLMTriage/reports       -> /app/LLMTriage/reports
+artifacts/model_outputs -> /app/artifacts/model_outputs
+artifacts/reports       -> /app/artifacts/reports
 ```
 
 The detection image contains the ML models it needs at runtime.
@@ -425,13 +424,13 @@ The detection image contains the ML models it needs at runtime.
 Stop and remove the Compose containers/network:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml down
+docker compose -f .\deploy\docker-compose.yml down
 ```
 
 Start again:
 
 ```powershell
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 ## Logs
@@ -453,11 +452,11 @@ docker logs -f memsoc-report
 Rebuild only the service that changed, then recreate the Compose service:
 
 ```powershell
-docker build -f .\Deployment\detection\Dockerfile -t memsoc-detection:latest .\Deployment\detection
-docker build -f .\Deployment\report\Dockerfile -t memsoc-report:latest .\Deployment\report
-docker build -f .\Deployment\dashboard\Dockerfile -t memsoc-dashboard:latest .\Deployment\dashboard
+docker build -f .\Dockerfile -t memsoc-detection:latest .
+docker build -f .\Dockerfile -t memsoc-report:latest .
+docker build -f .\Dockerfile -t memsoc-dashboard:latest .
 
-docker compose -f .\Deployment\docker-compose.yml up -d
+docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
 ## GitHub and Docker images
@@ -524,7 +523,7 @@ Invoke-RestMethod http://localhost:8001/api/reports
 Check the shared files:
 
 ```powershell
-docker exec memsoc-report sh -c "ls -lh /app/LLMTriage/model_outputs && echo '--- reports ---' && ls -lh /app/LLMTriage/reports"
+docker exec memsoc-report sh -c "ls -lh /app/artifacts/model_outputs && echo '--- reports ---' && ls -lh /app/artifacts/reports"
 ```
 
 ## Deployment validation
