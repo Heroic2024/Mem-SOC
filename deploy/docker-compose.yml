@@ -255,11 +255,19 @@ services:
       MEMSOC_MODELS_DIR: /app/models
       MEMSOC_API_HOST: detection
       MEMSOC_API_PORT: 8000
+      # The gateway is the dashboard container. Inside the network it is
+      # reachable by service name on port 80, not on the published port.
+      MEMSOC_GATEWAY_BASE: http://dashboard:80
     volumes:
       - ${MEMSOC_HOST_DATA:-../data}:/data:ro
       - ../models:/app/models:ro
       - ../artifacts:/artifacts
       - ../tests:/app/tests:ro
+      # test_gateway_contract.py reads these to compare the four places
+      # the gateway prefix is declared (BL-071). Read-only.
+      - ../deploy:/app/deploy:ro
+      - ../dashboard/src:/app/dashboard/src:ro
+      - ../dashboard/vite.config.js:/app/dashboard/vite.config.js:ro
     entrypoint:
       - python
       - -m
