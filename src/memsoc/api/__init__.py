@@ -14,9 +14,21 @@ route misbehaved. They are now two routers and two thin app objects here.
         POST  /api/logs            one NetFlow record -> verdict + SHAP + alert
 
     reports    (app_reports:app, default port 8001)
-        GET   /health              health probe
-        GET   /api/reports         summaries of retained reports, newest first
-        GET   /api/reports/{name}  one full report, exactly as written to disk
+        GET   /health                 health probe
+        GET   /api/reports            summaries of retained reports, newest first
+        GET   /api/reports/{name}     one full report, exactly as written to disk
+        GET   /api/openapi/merged     ONE OpenAPI document covering both
+                                      services; what /api-docs renders
+
+    Each app also serves its own FastAPI /docs and /openapi.json on its
+    own port. For one page covering everything, use the gateway:
+
+        http://localhost:8080/api-docs
+
+    The gateway (nginx, in the dashboard container) proxies
+    /services/detection/* and /services/report/* to the two services, so
+    the merged document's paths are real and callable. See
+    deploy/nginx.conf and routes_docs.py.
 
 They remain two separate ASGI apps on two ports on purpose: the detection
 app loads LightGBM, SHAP and the 37MB multiclass pickle, while the report

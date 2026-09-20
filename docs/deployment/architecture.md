@@ -40,6 +40,79 @@ Host bind mounts:
 | report | `memsoc-report` | 8001 | Stage 4 report generation and API |
 | dashboard | `memsoc-dashboard` | 8080 | Web dashboard served by Nginx |
 
+## API documentation — one page for both services
+
+MemSOC runs two ASGI apps on two ports, so FastAPI generates two separate
+Swagger pages. The dashboard container's nginx also acts as a **gateway**,
+fronting both services on one origin so there is a single place to read
+and exercise the whole HTTP surface:
+
+```text
+http://localhost:8080/api-docs
+```
+
+That page lists every endpoint in both services, grouped by service, and
+its "Try it out" buttons call the real services through the same origin.
+
+### How it fits together
+
+```text
+browser
+  |
+  v
+nginx  (dashboard container, :8080)          deploy/nginx.conf
+  |
+  +-- /                        -> static React dashboard
+  +-- /api-docs/               -> Swagger UI page
+  +-- /api-docs/openapi.json   -> report:8001/api/openapi/merged
+  +-- /services/detection/*    -> detection:8000/*
+  +-- /services/report/*       -> report:8001/*
+```
+
+### Why the paths are prefixed
+
+Both services expose `GET /health`. An OpenAPI document keys paths by
+path string, so a merge that simply concatenated the two specs would
+silently drop one of them. Proxying each service under its own prefix
+gives every operation a distinct, real, callable path — the merged
+document describes something that actually exists.
+
+The prefixes are declared in two places and **must agree**:
+
+| Where | What |
+|---|---|
+| `deploy/nginx.conf` | the `location` blocks that proxy each service |
+| `src/memsoc/api/routes_docs.py` | `DETECTION_PREFIX` / `REPORT_PREFIX` |
+
+### Where the merged document comes from
+
+`src/memsoc/api/routes_docs.py`, served by the **report** service at
+`GET /api/openapi/merged`. It takes its own spec in-process and fetches
+the detection service's spec over the compose network, then prefixes,
+tags and merges them. Duplicate `operationId`s are namespaced; component
+schemas are folded together, and a name that collides with a *different*
+definition is renamed rather than overwritten.
+
+It lives in the report service because the detection service cannot host
+it — importing the detection routes pulls in LightGBM and SHAP, which the
+report image does not install — and a third container to concatenate two
+JSON documents is not worth the moving part.
+
+If the detection service is unreachable, the page still renders the
+report half and carries a warning, rather than failing entirely.
+
+### Per-service docs are unchanged
+
+Each service still serves its own FastAPI docs on its own port, which is
+what you want when debugging one service in isolation:
+
+| Service | Docs | Raw spec |
+|---|---|---|
+| detection | `http://localhost:8000/docs` | `http://localhost:8000/openapi.json` |
+| report | `http://localhost:8001/docs` | `http://localhost:8001/openapi.json` |
+
+---
+
 ## Repository layout
 
 The application lives in ONE source tree. `deploy/` holds only build and

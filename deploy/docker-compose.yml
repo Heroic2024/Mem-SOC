@@ -93,6 +93,11 @@ services:
       <<: *python-env
       DETECTION_API_URL: http://detection:8000/api/logs
       MEMSOC_REPORT_PORT: 8001
+      # So paths.API_BASE resolves to the detection service in-network.
+      # routes_docs.py fetches its OpenAPI spec from there to build the
+      # merged document that /api-docs renders.
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
     ports:
       - "${MEMSOC_REPORT_PORT:-8001}:8001"
     volumes:
@@ -103,7 +108,11 @@ services:
     restart: unless-stopped
 
   # ------------------------------------------------------------------
-  # Dashboard. Static React bundle behind nginx.
+  # Dashboard + gateway. Static React bundle behind nginx, which also
+  # fronts both APIs on one origin so /api-docs can document and call
+  # every endpoint from a single page. See deploy/nginx.conf.
+  #
+  #   http://localhost:${MEMSOC_DASHBOARD_PORT:-8080}/api-docs
   # ------------------------------------------------------------------
   dashboard:
     build:
@@ -117,8 +126,13 @@ services:
     container_name: memsoc-dashboard
     ports:
       - "${MEMSOC_DASHBOARD_PORT:-8080}:80"
+    # nginx resolves both upstream names at startup, so both containers
+    # must exist before this one starts.
     depends_on:
-      - report
+      detection:
+        condition: service_healthy
+      report:
+        condition: service_started
     restart: unless-stopped
 
   # ------------------------------------------------------------------

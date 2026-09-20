@@ -100,7 +100,10 @@ docker compose -f deploy/docker-compose.yml build
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
-Then open <http://localhost:8080>.
+Then open <http://localhost:8080> for the dashboard, or
+<http://localhost:8080/api-docs> for **one page documenting every endpoint
+in both services**, with working "Try it out" buttons. Each service also
+keeps its own `/docs` on its own port.
 
 Drive the full workflow interactively — generate flows, classify them,
 produce a report:

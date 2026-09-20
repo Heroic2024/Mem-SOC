@@ -11,6 +11,7 @@ pickles. See memsoc/api/__init__.py for the full route table.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from memsoc.api.routes_docs import router as docs_router
 from memsoc.api.routes_reports import router
 
 app = FastAPI(
@@ -32,3 +33,8 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+# The unified API catalogue that /api-docs on the gateway renders. It
+# describes BOTH services; it is hosted here because this is the light
+# service (see routes_docs.py). Excluded from this app's own /docs.
+app.include_router(docs_router)

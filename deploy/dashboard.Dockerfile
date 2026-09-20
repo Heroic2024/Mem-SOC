@@ -1,4 +1,8 @@
-# MemSOC dashboard -- React built to static files, served by nginx.
+# MemSOC gateway -- the React dashboard plus the unified API docs.
+#
+# This image is also the gateway: its nginx fronts both services on one
+# origin so /api-docs can show every endpoint on a single page and call
+# them for real. See deploy/nginx.conf.
 #
 # Build context is the REPO ROOT, so paths below are repo-relative.
 #
@@ -27,6 +31,12 @@ RUN npm run build
 
 FROM nginx:alpine
 
+# Replaces the stock server block: static dashboard + /api-docs +
+# proxies for /services/detection/ and /services/report/.
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Includes public/api-docs/index.html, the Swagger UI page, which Vite
+# copies verbatim from dashboard/public/.
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
