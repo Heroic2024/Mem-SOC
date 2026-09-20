@@ -53,15 +53,235 @@ Report or Dashboard.
 
 ---
 
-# 2. Prerequisites
+# 2. Before You Test
 
-Before starting MemSOC:
+**Read this before running anything.** Most "it doesn't work" reports come
+from skipping a step here, and the symptoms rarely point at the cause: a
+stale image makes the test suite *pass while silently skipping*, and a
+leftover container from the old layout makes the new stack refuse to start.
 
-- Docker Desktop must be running.
-- The repository should be open at the Mem-SOC root.
-- The Groq API key must be available through the root `.env` file.
+Pick the path that matches you:
 
-### The three env files
+| Situation | Go to |
+|---|---|
+| Fresh clone, never run MemSOC before | 2.1 |
+| You ran MemSOC **before the restructure** (you have a `Deployment/` folder) | 2.2 — do this first, order matters |
+| You just pulled new commits | 2.3 |
+| About to test, or about to report a bug | 2.4 |
+
+---
+
+## 2.1 First-time setup
+
+**1. Docker Desktop must be running.**
+
+```powershell
+docker version
+```
+
+**2. Open PowerShell at the repository root** — the folder containing
+`src/`, `deploy/` and `docs/`.
+
+**3. Point at the dataset.** The multi-GB CSV is not in the repo and not in
+the images; it is mounted in. If your copy is at `./data`, there is nothing
+to do. Otherwise:
+
+```powershell
+$env:MEMSOC_HOST_DATA = "D:\path\to\folder\holding\NF-UNSW-NB15-v3.csv"
+```
+
+The container walks the folder, so any depth works. To make it permanent,
+put `MEMSOC_HOST_DATA=...` in `deploy/.env` (copy `deploy/.env.example`).
+
+**4. Create the root `.env`** with your Groq key:
+
+```text
+GROQ_API_KEY=your_actual_groq_api_key
+```
+
+Only report generation needs it. Detection and the dashboard run without it.
+
+**5. Build the images — all of them:**
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml build
+docker compose -f .\deploy\docker-compose.yml --profile tools build logstream
+```
+
+> The second line is **not optional**. `logstream` sits behind a profile, so
+> a plain `build` skips it — and it is also the image the test suite runs
+> in. Skip it and the suite runs against a stale or missing image.
+
+**6. Start the stack:**
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml up -d
+```
+
+**7. Generate the flow log.** `artifacts/` starts empty on a fresh clone —
+the generated flows are no longer committed to Git:
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm logstream --regenerate --sample-size 5000 --flows 10
+```
+
+This takes a few minutes — it scans the 2.36M-row CSV twice. It writes
+`artifacts/generated_logs.jsonl` and `artifacts/ground_truth.csv`.
+
+Now go to **2.4** and verify.
+
+---
+
+## 2.2 Coming from the pre-restructure layout
+
+If your checkout has a `Deployment/` folder, you are on the old layout.
+**Do this in order — step 1 happens before you pull.**
+
+**1. Stop the old stack FIRST, while its Compose file still exists.**
+
+```powershell
+docker compose -f .\Deployment\docker-compose.yml down
+```
+
+This must happen *before* `git pull`, because the pull deletes
+`Deployment/docker-compose.yml`. Afterwards no file knows about those
+containers, and the new stack runs under a **different Compose project
+name**, so `docker compose -f .\deploy\docker-compose.yml down` will not
+find or clean them up.
+
+If you already pulled, remove them by name instead:
+
+```powershell
+docker rm -f memsoc-detection memsoc-report memsoc-dashboard memsoc-log-generation
+```
+
+**2. Pull.**
+
+**3. Expect your generated flow log to disappear.** This is not data loss
+and not a bug. `generated_logs.jsonl` and `stream_index.npy` used to be
+committed; they now live in the gitignored `artifacts/`, so the pull
+removes the tracked copies. Regenerate them (step 7 in 2.1).
+
+The stream is seeded (`SEED = 42`, frozen), so regeneration selects the
+same rows in the same order with the same `uid`s. One caveat if you diff
+the files: a log generated on a Windows host uses CRLF line endings and one
+generated inside the container uses LF, so the bytes differ while the
+content is identical.
+
+**4. Your `.env` is untouched.** It is gitignored, so the pull does not
+change it and everything still works. But the layout changed: the root
+`.env` is now injected wholesale into containers, so personal credentials
+belong in `.env.developer` instead. See **2.6** below.
+
+**5. Rebuild everything** (steps 5–6 in 2.1). Your existing `memsoc-*`
+images were built from the old `Deployment/` tree and are unusable — `src/`,
+every Dockerfile and the Compose file all changed.
+
+**6. Prune the old images** once the new stack is healthy:
+
+```powershell
+docker image prune
+```
+
+---
+
+## 2.3 After pulling new commits
+
+Not every pull needs a full rebuild. Match what changed:
+
+| Changed files | What to do |
+|---|---|
+| `docs/**` only | Nothing |
+| `deploy/docker-compose.yml` only | `up -d` — recreates containers, no build |
+| `src/memsoc/**`, `dashboard/**`, `deploy/*.Dockerfile`, `requirements/**` | Rebuild the affected image(s) — Section 26 — then `up -d` |
+| Anything under `tests/`, or a file the tests read | Rebuild `logstream`, the tests image |
+| Not sure | Rebuild everything; it is layer-cached and cheap |
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml build
+docker compose -f .\deploy\docker-compose.yml --profile tools build logstream
+docker compose -f .\deploy\docker-compose.yml up -d
+```
+
+---
+
+## 2.4 Pre-test checklist
+
+Run these four before testing anything, and before filing a bug. They take
+under a minute and catch nearly every setup problem.
+
+**1. All three daemons up, Detection healthy:**
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml ps
+```
+
+`memsoc-detection` must say `(healthy)`, not merely `Up`. It unpickles
+~37MB at startup and is not ready until then — everything else waits on it.
+
+**2. Paths resolve and inputs exist:**
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm paths
+```
+
+Every line marked `ok` is present. `MISSING` on `DATASET_CSV` means
+`MEMSOC_HOST_DATA` is wrong; `MISSING` on the models means the image did
+not build correctly.
+
+**3. The APIs answer:**
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health     # -> healthy
+Invoke-RestMethod http://localhost:8001/health     # -> ok
+```
+
+**4. Run the test suite:**
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm tests
+```
+
+Expected:
+
+```text
+Ran 19 tests in 1.7s
+
+OK
+```
+
+> **Read the skip count.** `OK (skipped=2)` is *not* a clean run — it means
+> a whole tier was skipped because its input was missing. The usual causes
+> are a stale `logstream` image (rebuild it) or the stack not being up. A
+> clean run is `OK` with no skips.
+
+Then open the two pages:
+
+```text
+http://localhost:8080            dashboard
+http://localhost:8080/api-docs   every endpoint in both services
+```
+
+---
+
+## 2.5 If you are reporting a problem
+
+Include all of this, or the report is not actionable:
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml ps
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm paths
+docker logs memsoc-detection --tail 50
+docker logs memsoc-report --tail 50
+```
+
+Plus the **exact command** you ran, its **full output**, and whether you
+rebuilt after your last pull. Section 28 lists the common failures and
+their causes.
+
+---
+
+## 2.6 The three env files
 
 They are not interchangeable. Which one a variable lives in decides
 whether it reaches a container.
@@ -98,7 +318,7 @@ GROQ_API_KEY=your_actual_groq_api_key
 All of `.env`, `.env.developer` and `deploy/.env` are gitignored and must
 stay that way.
 
-### Check the API key
+### Checking the key is set
 
 The containers read the key from the file, not from your shell, so check
 the file:
@@ -277,6 +497,168 @@ The dashboard is served by Nginx inside the Dashboard container.
 The dashboard reads report information from the Stage 4 Report API.
 
 It does not start capture or generate reports itself.
+
+That same container also acts as the API gateway, and serves one page
+documenting every endpoint in both services:
+
+```text
+http://localhost:8080/api-docs
+```
+
+See Section 8a for how that works and how it is kept from drifting.
+
+---
+
+# 8a. The Gateway, the API Docs, and the Drift Test
+
+This section explains a part of the system that is easy to trip over,
+because one container quietly does two jobs.
+
+## The Dashboard container is also the gateway
+
+`memsoc-dashboard` does not only serve the React page. Its Nginx also
+**forwards API traffic**, so the browser talks to one address instead of
+three:
+
+```text
+                    browser
+                       |
+                       v
+        http://localhost:8080   (memsoc-dashboard / Nginx)
+                       |
+   +-------------------+--------------------+------------------+
+   |                   |                    |                  |
+   /                   /api-docs/           /services/detection/*   /services/report/*
+   static React page   unified API docs     -> detection:8000/*     -> report:8001/*
+```
+
+So there are two ways to reach the same API:
+
+| Route | Use it for |
+|---|---|
+| `http://localhost:8000/health` | Talking to one service directly. Debugging, scripts, `Invoke-RestMethod`. |
+| `http://localhost:8080/services/detection/health` | The same thing, through the gateway. This is what the browser uses. |
+
+Both work and both are supported. The direct ports are not going away.
+
+## Why one page of API docs
+
+Each service generates its own Swagger page (`:8000/docs` and
+`:8001/docs`). Those still exist. But to see **everything at once**:
+
+```text
+http://localhost:8080/api-docs
+```
+
+That page lists every endpoint in both services, and its "Try it out"
+buttons make real calls.
+
+It could not be built by simply gluing the two specs together. Both
+services publish a `GET /health`, and an OpenAPI document can only hold
+one entry per path -- one would have silently disappeared. That is why
+the gateway puts each service under its own prefix: with
+`/services/detection/health` and `/services/report/health` there is no
+longer a clash, and every path on the page is a real address you can
+call.
+
+The merged document is built by the Report service at
+`/api/openapi/merged`. It fetches Detection's spec over the Docker
+network and folds it into its own. If Detection is down, the page still
+renders the Report half and shows a warning rather than failing.
+
+## The catch: one name, four files
+
+The prefix `/services/report` is **typed out by hand in four places**,
+in three different languages, and none of them reads the value from the
+others:
+
+| File | What it does | If only this one changes |
+|---|---|---|
+| `deploy/nginx.conf` | actually routes the traffic | dashboard and docs page both break |
+| `src/memsoc/api/routes_docs.py` | writes the paths into the merged spec | docs page lists addresses that 404 |
+| `dashboard/src/api.js` | where the dashboard fetches data | dashboard loads but stays **empty** |
+| `dashboard/vite.config.js` | the `npm run dev` proxy | dev breaks, production keeps working |
+
+Rename it in one file and the others keep pointing at the old name.
+Nothing about this looks broken -- every file is still valid -- and the
+pipeline tests all still pass, because they talk to Detection directly
+on port 8000 and never pass through the gateway.
+
+That last point is what made this worth a test: **the suite could be
+fully green while the dashboard showed nothing.**
+
+## The drift test
+
+`tests/test_gateway_contract.py` exists to catch exactly that. Run it
+with the rest of the suite:
+
+```powershell
+docker compose -f .\deploy\docker-compose.yml --profile tools run --rm tests
+```
+
+Expected:
+
+```text
+Ran 19 tests in 1.7s
+
+OK
+```
+
+Natively, from the repository root:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+It works in two layers:
+
+1. **Static** (no Docker needed) -- reads the four files and checks the
+   literals still match each other.
+2. **Live** (skips if the stack is down) -- asks the running gateway to
+   serve every path the API docs page advertises. Anything that comes
+   back `404` means the documentation is describing an address that does
+   not exist.
+
+The second layer is the important one. The four files can agree with
+each other and still disagree with what is actually deployed -- for
+example if `deploy/nginx.conf` changed but the Dashboard image was never
+rebuilt.
+
+## What a failure looks like
+
+If someone renames the prefix in `deploy/nginx.conf` only:
+
+```text
+FAIL: test_nginx_routes_both_prefixes
+AssertionError: deploy/nginx.conf has no location block for
+/services/report/ -- routes_docs.py writes that prefix into the merged
+spec, so every path it advertises would 404
+```
+
+If the running stack disagrees with the docs page:
+
+```text
+FAIL: test_every_advertised_path_is_routed
+AssertionError: the merged spec advertises paths the gateway does not
+serve. The prefixes in deploy/nginx.conf and
+src/memsoc/api/routes_docs.py have drifted:
+  GET  /svc/detection/          -> 404
+  GET  /svc/detection/health    -> 404
+  POST /svc/detection/api/logs  -> 404
+```
+
+The fix is always the same: make the four files agree, then rebuild the
+image for whichever service you changed (Section 26).
+
+## If you need to change the prefix
+
+Change it in all four files in the same commit, rebuild `dashboard` and
+`report`, then run the test. Do **not** try to change it by setting
+`MEMSOC_GATEWAY_DETECTION_PREFIX` or `MEMSOC_GATEWAY_REPORT_PREFIX`:
+those only affect the merged spec, not Nginx, so setting them
+desynchronises the system. Tracked as **BL-071**; the long-term fix is
+to drive all four from one value.
 
 ---
 
@@ -529,7 +911,7 @@ The default interval is `0`.
 After capture results exist, generate a report inside the Report container:
 
 ```powershell
-docker exec memsoc-report python generate_report.py
+docker exec memsoc-report python -m memsoc.triage.generate_report
 ```
 
 ### What it does
@@ -559,7 +941,7 @@ The host directory is shared with the Report container.
 To generate a report using only the 10 most recently captured flows:
 
 ```powershell
-docker exec memsoc-report python generate_report.py --limit 10
+docker exec memsoc-report python -m memsoc.triage.generate_report --limit 10
 ```
 
 This is useful for testing without generating a report from the complete capture.
@@ -586,13 +968,13 @@ JSON + Markdown report
 To limit detailed findings to 25:
 
 ```powershell
-docker exec memsoc-report python generate_report.py --max-findings 25
+docker exec memsoc-report python -m memsoc.triage.generate_report --max-findings 25
 ```
 
 You can combine options:
 
 ```powershell
-docker exec memsoc-report python generate_report.py --limit 100 --max-findings 25
+docker exec memsoc-report python -m memsoc.triage.generate_report --limit 100 --max-findings 25
 ```
 
 This means:
@@ -631,13 +1013,13 @@ Get-ChildItem .\artifacts\reports -File |
 Check model outputs from the Report container:
 
 ```powershell
-docker exec memsoc-report sh -c "ls -lh /app/artifacts/model_outputs"
+docker exec memsoc-report sh -c "ls -lh /artifacts/model_outputs"
 ```
 
 Check reports:
 
 ```powershell
-docker exec memsoc-report sh -c "ls -lh /app/artifacts/reports"
+docker exec memsoc-report sh -c "ls -lh /artifacts/reports"
 ```
 
 The Report container should see the same files that exist in:
@@ -722,7 +1104,7 @@ Pass complete: X/X flows captured.
 ### Step 6 — Generate the report
 
 ```powershell
-docker exec memsoc-report python generate_report.py
+docker exec memsoc-report python -m memsoc.triage.generate_report
 ```
 
 ### Step 7 — Open the dashboard
@@ -756,7 +1138,7 @@ The program will process all 10,000 records.
 After completion:
 
 ```powershell
-docker exec memsoc-report python generate_report.py
+docker exec memsoc-report python -m memsoc.triage.generate_report
 ```
 
 Then refresh:
@@ -875,69 +1257,62 @@ to stop following the logs.
 
 # 26. Rebuild Images After Code Changes
 
-If Detection code or its Dockerfile changes:
+Every image builds from the **repository root** against the single
+`src/` tree, so there is one build context for the whole system. Use
+Compose rather than raw `docker build` -- it already knows each service's
+Dockerfile and context:
 
 ```powershell
-docker build -f .\Dockerfile -t memsoc-detection:latest .
+docker compose -f .\deploy\docker-compose.yml build detection
+docker compose -f .\deploy\docker-compose.yml build report
+docker compose -f .\deploy\docker-compose.yml build dashboard
+docker compose -f .\deploy\docker-compose.yml --profile tools build logstream
 ```
 
-If Report code or its Dockerfile changes:
+Rebuild everything at once:
 
 ```powershell
-docker build -f .\Dockerfile -t memsoc-report:latest .
+docker compose -f .\deploy\docker-compose.yml build
 ```
 
-If Dashboard code or its Dockerfile changes:
-
-```powershell
-docker build -f .\Dockerfile -t memsoc-dashboard:latest .
-```
-
-If `logstream` code or its Dockerfile changes:
-
-```powershell
-docker build -f .\deploy\deploy\logstream.Dockerfile -t memsoc-logstream:latest .
-```
-
-Then recreate the affected Compose services:
+Then recreate the affected services:
 
 ```powershell
 docker compose -f .\deploy\docker-compose.yml up -d
 ```
 
+### Which image do I need to rebuild?
+
+| You changed | Rebuild |
+|---|---|
+| `src/memsoc/detection/**`, `src/memsoc/api/routes_detection.py` | `detection` |
+| `src/memsoc/triage/**`, `src/memsoc/api/routes_reports.py`, `routes_docs.py` | `report` |
+| `dashboard/**`, `deploy/nginx.conf` | `dashboard` |
+| `src/memsoc/logstream/**` | `logstream` |
+| `src/memsoc/paths.py` | all of them |
+
+**`logstream` is also the image the `tests` service runs.** If you add or
+change a test's dependencies, or add a file the tests read, rebuild
+`logstream` or the suite will run against a stale copy. A stale image is
+easy to miss: the tests still pass, they just silently skip.
+
 ---
 
 # 27. Important Docker Build Rule
 
-Build each service using its own deployment directory.
+Build from the repository root, via Compose. Do **not** build a service
+from its own subdirectory.
 
-Detection:
+This is the opposite of what an earlier version of this guide said, and
+the reason is the point of the restructure: there used to be a copy of
+the application under each service directory, so each image built from
+its own small context. Those copies drifted out of sync with each other.
+There is now exactly one copy of the code, at `src/`, and every
+Dockerfile reads from it.
 
-```powershell
-docker build -f .\Dockerfile -t memsoc-detection:latest .
-```
-
-Report:
-
-```powershell
-docker build -f .\Dockerfile -t memsoc-report:latest .
-```
-
-Dashboard:
-
-```powershell
-docker build -f .\Dockerfile -t memsoc-dashboard:latest .
-```
-
-logstream:
-
-```powershell
-docker build -f .\deploy\deploy\logstream.Dockerfile -t memsoc-logstream:latest .
-```
-
-Do not use the repository root as the build context for the Detection image.
-
-Using the deployment-specific context keeps the Docker build small and prevents the multi-GB project dataset and unrelated files from being sent to Docker.
+The dataset is kept out of the build by `.dockerignore` (it excludes
+`data/`, `artifacts/`, `logs/`, `node_modules/` and `docs/`), so a
+root-context build does not send the multi-GB CSV to Docker.
 
 ---
 
@@ -1051,14 +1426,15 @@ not:
 Check:
 
 ```powershell
-if ($env:GROQ_API_KEY) {
-    Write-Host "GROQ_API_KEY is set"
+if (Select-String -Path .env -Pattern '^GROQ_API_KEY=.+' -Quiet) {
+    Write-Host "GROQ_API_KEY is set in .env"
 } else {
-    Write-Host "GROQ_API_KEY is NOT set"
+    Write-Host "GROQ_API_KEY is NOT set in .env"
 }
 ```
 
-Then verify the `.env` file contains the key and restart Compose:
+The containers read the key from the file, not from your shell, so check
+the file rather than `$env:`. Then restart Compose:
 
 ```powershell
 docker compose -f .\deploy\docker-compose.yml down
@@ -1116,7 +1492,7 @@ Invoke-RestMethod http://localhost:8000/health
 python .\src\memsoc\triage\live_capture.py --reset
 
 # 5. Generate report
-docker exec memsoc-report python generate_report.py
+docker exec memsoc-report python -m memsoc.triage.generate_report
 
 # 6. Open dashboard
 # http://localhost:8080
@@ -1144,8 +1520,10 @@ docker compose -f .\deploy\docker-compose.yml stop
 | Clean capture | `python .\src\memsoc\triage\live_capture.py --reset` |
 | Continuous capture | `python .\src\memsoc\triage\live_capture.py --loop` |
 | Capture with delay | `python .\src\memsoc\triage\live_capture.py --interval 1.0` |
-| Generate report | `docker exec memsoc-report python generate_report.py` |
-| Test report | `docker exec memsoc-report python generate_report.py --limit 10` |
+| Generate report | `docker exec memsoc-report python -m memsoc.triage.generate_report` |
+| Run the test suite | `docker compose -f .\deploy\docker-compose.yml --profile tools run --rm tests` |
+| Open unified API docs | `http://localhost:8080/api-docs` |
+| Test report | `docker exec memsoc-report python -m memsoc.triage.generate_report --limit 10` |
 | Detection logs | `docker logs memsoc-detection --tail 100` |
 | Report logs | `docker logs memsoc-report --tail 100` |
 | Dashboard logs | `docker logs memsoc-dashboard --tail 100` |

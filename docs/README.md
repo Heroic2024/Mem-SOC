@@ -35,6 +35,7 @@ package under `src/memsoc/` and one directory here.
 
 | I want to… | Read |
 |---|---|
+| **Set up, or pull after the restructure** | [`deployment/operations.md`](./deployment/operations.md) **§2 — Before You Test** |
 | Run the stack | [`deployment/operations.md`](./deployment/operations.md) |
 | Browse every API endpoint in one place | `http://localhost:8080/api-docs` — see [`deployment/architecture.md`](./deployment/architecture.md) |
 | Understand the container topology and ports | [`deployment/architecture.md`](./deployment/architecture.md) |

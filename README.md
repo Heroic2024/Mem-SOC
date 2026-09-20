@@ -92,6 +92,12 @@ Both arms replay the identical alert sequence. Compared on:
 
 ## Running it
 
+> **Setting up, or pulling after the restructure?** Read
+> **[`docs/deployment/operations.md` §2 — Before You Test](./docs/deployment/operations.md)**
+> first. It covers first-time setup, migrating off the old `Deployment/`
+> layout (order matters — stop the old stack *before* pulling), which
+> images to rebuild, and a four-step pre-test checklist.
+
 Three services start by default — detection (`:8000`), report (`:8001`)
 and the dashboard (`:8080`):
 
