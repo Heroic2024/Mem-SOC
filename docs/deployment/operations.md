@@ -61,34 +61,62 @@ Before starting MemSOC:
 - The repository should be open at the Mem-SOC root.
 - The Groq API key must be available through the root `.env` file.
 
-Expected location:
+### The three env files
+
+They are not interchangeable. Which one a variable lives in decides
+whether it reaches a container.
 
 ```text
 Mem-SOC/
-└── .env
+├── .env                 -> INJECTED INTO the report + controller containers
+├── .env.developer       -> read by nobody; your personal credentials
+└── deploy/
+    ├── .env             -> read by Compose for ${...} (ports, dataset path)
+    └── .env.example     -> committed template for the above
 ```
 
-The `.env` file should contain:
+| File | Who reads it | What belongs in it |
+|---|---|---|
+| `.env` | Passed wholesale into the `report` and `controller` containers via `env_file` | **Only** secrets the application itself needs — today that is `GROQ_API_KEY` alone |
+| `.env.developer` | Nothing in this repo. You load it into your own shell by hand | Personal credentials MemSOC does not use, e.g. `GITHUB_PAT` |
+| `deploy/.env` | Compose, for `${...}` interpolation | Non-secret overrides: published ports, `MEMSOC_HOST_DATA` |
+
+Everything in the root `.env` reaches those two containers, so putting an
+unrelated credential there hands it to processes with no use for it. That
+is why `GITHUB_PAT` lives in `.env.developer` instead
+(see `docs/PRODUCT_BACKLOG.md` **BL-020**).
+
+Compose does **not** read the root `.env` for `${...}` interpolation. Its
+project directory is `deploy/`, so port overrides go in `deploy/.env`.
+
+The root `.env` should contain:
 
 ```text
 GROQ_API_KEY=your_actual_groq_api_key
 ```
 
-The `.env` file must remain excluded from Git.
+All of `.env`, `.env.developer` and `deploy/.env` are gitignored and must
+stay that way.
 
 ### Check the API key
 
-Run:
+The containers read the key from the file, not from your shell, so check
+the file:
 
 ```powershell
-if ($env:GROQ_API_KEY) {
-    Write-Host "GROQ_API_KEY is set"
+if (Select-String -Path .env -Pattern '^GROQ_API_KEY=.+' -Quiet) {
+    Write-Host "GROQ_API_KEY is set in .env"
 } else {
-    Write-Host "GROQ_API_KEY is NOT set"
+    Write-Host "GROQ_API_KEY is NOT set in .env"
 }
 ```
 
-The Compose configuration also reads `GROQ_API_KEY` from the environment.
+To confirm what a running container actually received, without printing
+the value:
+
+```powershell
+docker exec memsoc-report sh -c "env | grep -c '^GROQ_API_KEY='"
+```
 
 ---
 

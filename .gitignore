@@ -6,7 +6,13 @@ venv/
 .venv/
 
 # --- Secrets ---
+# .env            runtime secrets injected into containers (GROQ_API_KEY)
+# .env.developer  personal credentials; nothing in the deployment reads it
+# deploy/.env     non-secret compose overrides (ports, dataset location)
 .env
+.env.*
+!.env.example
+deploy/.env
 
 # --- Node ---
 node_modules/

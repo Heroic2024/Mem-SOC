@@ -16,8 +16,19 @@
 # directory holding NF-UNSW-NB15-v3.csv (at any depth; paths.py walks the
 # tree). Defaults to ../data, correct for a normal checkout.
 #
+# TWO env files, and they are not interchangeable:
+#
+#   deploy/.env   read by Compose for ${...} interpolation below, because
+#                 the project directory is THIS directory, not the repo
+#                 root. Holds non-secret overrides (ports, dataset path).
+#                 Template: deploy/.env.example
+#   ../.env       injected INTO the report and controller containers via
+#                 `env_file`. Everything in it reaches those containers,
+#                 so it holds only GROQ_API_KEY. Personal credentials go
+#                 in ../.env.developer, which nothing here reads (BL-020).
+#
 # PORTS. Every published port is defined once, here, and defaults to the
-# value in the table below. Override in .env at the repo root, e.g.
+# value in the table below. Override in deploy/.env, e.g.
 # MEMSOC_DASHBOARD_PORT=9090, if something else on the host already owns
 # one of them.
 #
@@ -75,6 +86,7 @@ services:
       dockerfile: deploy/report.Dockerfile
     image: memsoc-report:latest
     container_name: memsoc-report
+    # Injected wholesale into this container -- keep it to GROQ_API_KEY.
     env_file:
       - ../.env
     environment:
@@ -155,6 +167,7 @@ services:
     container_name: memsoc-controller
     stdin_open: true
     tty: true
+    # Injected wholesale into this container -- keep it to GROQ_API_KEY.
     env_file:
       - ../.env
     environment:

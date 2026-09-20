@@ -95,7 +95,15 @@ docker compose version
 
 ## Environment configuration
 
-Keep the Groq API key outside Git and outside Docker images.
+Keep secrets outside Git and outside Docker images.
+
+There are three env files and they serve different purposes:
+
+| File | Who reads it | Contents |
+|---|---|---|
+| `.env` (repo root) | Injected into the `report` and `controller` containers via `env_file` | `GROQ_API_KEY` only |
+| `.env.developer` | Nothing in the deployment; load it into your own shell | Personal credentials, e.g. `GITHUB_PAT` |
+| `deploy/.env` | Compose, for `${...}` interpolation | Published ports, `MEMSOC_HOST_DATA`. Template at `deploy/.env.example` |
 
 Create `.env` in the repository root:
 
@@ -103,23 +111,29 @@ Create `.env` in the repository root:
 GROQ_API_KEY=your_actual_groq_api_key
 ```
 
-The repository `.gitignore` must contain:
+`env_file` passes **every** variable in that file to those containers, so
+anything added to it is handed to them too. Credentials the application
+does not use belong in `.env.developer`, which no service reads
+(`docs/PRODUCT_BACKLOG.md` **BL-020**).
+
+The repository `.gitignore` covers all of them:
 
 ```text
 .env
+.env.*
+!.env.example
+deploy/.env
 ```
 
-Verify the variable without printing its value:
+Verify what a running container received, without printing the value:
 
 ```powershell
-if ($env:GROQ_API_KEY) {
-    Write-Host "GROQ_API_KEY is set"
-} else {
-    Write-Host "GROQ_API_KEY is NOT set"
-}
+docker exec memsoc-report sh -c "env | grep -c '^GROQ_API_KEY='"
 ```
 
-Compose passes the key to the report service through `${GROQ_API_KEY}`.
+Compose passes the key to the report and controller services through
+`env_file: ../.env` — not through `${GROQ_API_KEY}` interpolation, which
+would read `deploy/.env` instead.
 
 ## Build images
 
