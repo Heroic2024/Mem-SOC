@@ -18,8 +18,13 @@ from memsoc import paths
 
 # Where the workflow ends up. Printed at the end so the operator does not
 # have to go looking in docker-compose.yml for the published ports.
+#
+# These are HOST-facing URLs for a human to click, not the in-network
+# addresses this process uses. paths.REPORT_BASE resolves to
+# http://report:8001 inside the Docker network, which is useless in a
+# browser, so compose passes the published localhost URLs instead.
 DASHBOARD_URL = os.environ.get("MEMSOC_DASHBOARD_URL", "http://localhost:8080")
-REPORT_URL = paths.REPORT_BASE
+REPORT_URL = os.environ.get("MEMSOC_REPORT_URL", "http://localhost:8001")
 
 
 def run_module(module, args=None, env=None):

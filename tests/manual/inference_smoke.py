@@ -1,9 +1,10 @@
 import pandas as pd
 
+from memsoc import paths
 from memsoc.detection.inference.inference_pipeline import InferencePipeline
 
 
-DATASET_PATH = "data/raw/NF-UNSW-NB15-v3.csv"
+DATASET_PATH = paths.DATASET_CSV
 
 
 def main():

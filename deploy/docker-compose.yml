@@ -1,104 +1,250 @@
+# MemSOC container services.
+#
+#   docker compose -f deploy/docker-compose.yml build
+#   docker compose -f deploy/docker-compose.yml up -d
+#   docker compose -f deploy/docker-compose.yml --profile tools run --rm paths
+#   docker compose -f deploy/docker-compose.yml --profile workflow run --rm controller
+#
+# Three daemons start by default: detection, report, dashboard. The
+# one-shot jobs (log generation, the controller, the path dump, the test
+# suite) sit behind profiles so `up` does not try to run them.
+#
+# Every service builds from the REPO ROOT so they all share one source
+# tree. There is no per-service copy of the code.
+#
+# The dataset is not in any image -- point MEMSOC_HOST_DATA at the
+# directory holding NF-UNSW-NB15-v3.csv (at any depth; paths.py walks the
+# tree). Defaults to ../data, correct for a normal checkout.
+#
+# PORTS. Every published port is defined once, here, and defaults to the
+# value in the table below. Override in .env at the repo root, e.g.
+# MEMSOC_DASHBOARD_PORT=9090, if something else on the host already owns
+# one of them.
+#
+#     service     container   host (default)
+#     detection      8000     MEMSOC_DETECTION_PORT  8000
+#     report         8001     MEMSOC_REPORT_PORT     8001
+#     dashboard        80     MEMSOC_DASHBOARD_PORT  8080
+#
+# The dashboard bundle runs in the operator's BROWSER, so it is built
+# against http://localhost:${MEMSOC_REPORT_PORT}, not the internal
+# `report` hostname. That is why the report port appears both as a
+# published port and as the dashboard's build arg -- one variable drives
+# both, so they cannot drift.
+
+name: memsoc
+
+# Shared by every Python service: one source tree, one artifacts directory.
+x-python-common: &python-common
+  environment: &python-env
+    MEMSOC_ROOT: /app
+    MEMSOC_ARTIFACTS_DIR: /artifacts
+    MEMSOC_LOG_DIR: /app/logs
+    PYTHONPATH: /app/src
+  restart: unless-stopped
+
 services:
 
+  # ------------------------------------------------------------------
+  # Layer 2 -- detection. Frozen LightGBM classifier + SHAP.
+  # ------------------------------------------------------------------
   detection:
+    build:
+      context: ..
+      dockerfile: deploy/detection.Dockerfile
     image: memsoc-detection:latest
     container_name: memsoc-detection
     environment:
-      MEMSOC_ROOT: /app
-      MEMSOC_MODELS_DIR: /app/final_ml_model_v1/src/models
-      MEMSOC_API_HOST: 0.0.0.0
+      <<: *python-env
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: 127.0.0.1
       MEMSOC_API_BIND: 0.0.0.0
       MEMSOC_API_PORT: 8000
-      PYTHONPATH: /app:/app/final_ml_model_v1
     ports:
-      - "8000:8000"
+      - "${MEMSOC_DETECTION_PORT:-8000}:8000"
+    volumes:
+      - ../artifacts:/artifacts
     restart: unless-stopped
 
+  # ------------------------------------------------------------------
+  # Layer 4 -- report API. Read-only; serves generated report JSON.
+  # ------------------------------------------------------------------
   report:
+    build:
+      context: ..
+      dockerfile: deploy/report.Dockerfile
     image: memsoc-report:latest
     container_name: memsoc-report
     env_file:
       - ../.env
     environment:
+      <<: *python-env
       DETECTION_API_URL: http://detection:8000/api/logs
-      PYTHONPATH: /app
-    volumes:
-      - ../LLMTriage/model_outputs:/app/LLMTriage/model_outputs
-      - ../LLMTriage/reports:/app/LLMTriage/reports
+      MEMSOC_REPORT_PORT: 8001
     ports:
-      - "8001:8001"
+      - "${MEMSOC_REPORT_PORT:-8001}:8001"
+    volumes:
+      - ../artifacts:/artifacts
     depends_on:
-      - detection
+      detection:
+        condition: service_healthy
     restart: unless-stopped
 
+  # ------------------------------------------------------------------
+  # Dashboard. Static React bundle behind nginx.
+  # ------------------------------------------------------------------
   dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/dashboard.Dockerfile
+      args:
+        # Host-reachable, because this runs in the browser. Same variable
+        # that publishes the report port above.
+        VITE_API_URL: http://localhost:${MEMSOC_REPORT_PORT:-8001}
     image: memsoc-dashboard:latest
     container_name: memsoc-dashboard
     ports:
-      - "8080:80"
+      - "${MEMSOC_DASHBOARD_PORT:-8080}:80"
     depends_on:
       - report
     restart: unless-stopped
 
-  # Generates flow records and replays them against `detection` over HTTP
-  # (--no-api: it never loads a model itself). The dataset lives outside
-  # git -- point MEMSOC_HOST_DATA at the directory holding
-  # NF-UNSW-NB15-v3.csv (paths.py walks it, so any depth works); defaults
-  # to ../data, correct for a normal checkout. One-shot job, not a daemon,
-  # so `docker compose up log_generation` runs the batch demo once and exits.
-  log_generation:
-    build:
-      context: ./log_generation
-      dockerfile: Dockerfile
-    image: memsoc-log-generation:latest
-    container_name: memsoc-log-generation
-    environment:
-      MEMSOC_ROOT: /app
-      MEMSOC_DATA_DIR: /data
-      MEMSOC_ARTIFACTS_DIR: /artifacts
-      MEMSOC_MODELS_DIR: /app/final_ml_model_v1/src/models
-      MEMSOC_API_HOST: detection
-      MEMSOC_API_PORT: 8000
-      PYTHONPATH: /app
-    volumes:
-      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
-      - ./detection/final_ml_model_v1/src/models:/app/final_ml_model_v1/src/models:ro
-      - memsoc-log-artifacts:/artifacts
-    depends_on:
-      - detection
-    command: ["--flows", "100"]
-
-  # Interactive controller for the complete MemSOC workflow.
-  # The controller generates the requested logs, starts live capture,
-  # and generates the final security report.
-  controller:
+  # ------------------------------------------------------------------
+  # Layer 1 -- log generation. One-shot: generates flows and replays them
+  # against `detection` over HTTP (--no-api, it never loads a model).
+  #
+  # The model pickles are only stat()'d by preflight, never loaded, so
+  # they are mounted read-only rather than copied into the image.
+  # ------------------------------------------------------------------
+  logstream:
+    profiles: ["tools", "workflow"]
     build:
       context: ..
-      dockerfile: Deployment/controller/Dockerfile
+      dockerfile: deploy/logstream.Dockerfile
+    image: memsoc-logstream:latest
+    container_name: memsoc-logstream
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    depends_on:
+      detection:
+        condition: service_healthy
+    restart: "no"
+    command: ["--flows", "100"]
+
+  # ------------------------------------------------------------------
+  # Interactive controller for the complete workflow: generate logs ->
+  # live capture -> security report. Run it attached:
+  #
+  #   docker compose -f deploy/docker-compose.yml \
+  #     --profile workflow run --rm controller
+  # ------------------------------------------------------------------
+  controller:
+    profiles: ["workflow"]
+    build:
+      context: ..
+      dockerfile: deploy/controller.Dockerfile
     image: memsoc-controller:latest
     container_name: memsoc-controller
     stdin_open: true
     tty: true
+    env_file:
+      - ../.env
     environment:
-      MEMSOC_ROOT: /app
+      <<: *python-env
       MEMSOC_DATA_DIR: /data
-      MEMSOC_ARTIFACTS_DIR: /artifacts
-      MEMSOC_MODELS_DIR: /app/final_ml_model_v1/src/models
+      MEMSOC_MODELS_DIR: /app/models
       MEMSOC_API_HOST: detection
       MEMSOC_API_PORT: 8000
       DETECTION_API_URL: http://detection:8000/api/logs
-      PYTHONPATH: /app:/app/LLMTriage
-    env_file:
-      - ../.env
+      # Host-facing URLs the controller prints for the operator to click.
+      MEMSOC_DASHBOARD_URL: http://localhost:${MEMSOC_DASHBOARD_PORT:-8080}
+      MEMSOC_REPORT_URL: http://localhost:${MEMSOC_REPORT_PORT:-8001}
     volumes:
       - ${MEMSOC_HOST_DATA:-../data}:/data:ro
-      - ./detection/final_ml_model_v1/src/models:/app/final_ml_model_v1/src/models:ro
-      - memsoc-log-artifacts:/artifacts
-      - ../LLMTriage/model_outputs:/app/LLMTriage/model_outputs
-      - ../LLMTriage/reports:/app/LLMTriage/reports
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
     depends_on:
-      - detection
-      - report
+      detection:
+        condition: service_healthy
+      report:
+        condition: service_started
+    restart: "no"
 
-volumes:
-  memsoc-log-artifacts:
+  # ------------------------------------------------------------------
+  # Tools. Folded in from the deleted root docker-compose.yml so those
+  # one-shot commands did not disappear with it.
+  # ------------------------------------------------------------------
+
+  # Resolved path layout and what is missing. Run this first if anything
+  # fails to find its inputs.
+  paths:
+    profiles: ["tools"]
+    image: memsoc-logstream:latest
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    entrypoint: ["python", "-m", "memsoc.paths"]
+    restart: "no"
+
+  # Rebuild artifacts/generated_logs.jsonl from the CSV. Needs the dataset
+  # mounted and takes a few minutes -- two full scans of 2.36M rows.
+  generate:
+    profiles: ["tools"]
+    image: memsoc-logstream:latest
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    entrypoint:
+      - python
+      - -m
+      - memsoc.logstream.run_pipeline
+    command: ["--regenerate", "--sample-size", "5000", "--flows", "10", "--no-api"]
+    restart: "no"
+
+  # Contract tests. The live tier needs an API, so bring `detection` up
+  # alongside if you want that tier to run rather than skip.
+  tests:
+    profiles: ["tools"]
+    image: memsoc-logstream:latest
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+      - ../tests:/app/tests:ro
+    entrypoint:
+      - python
+      - -m
+      - unittest
+      - discover
+      - -s
+      - /app/tests
+      - -p
+      - "test_*.py"
+      - -v
+    restart: "no"

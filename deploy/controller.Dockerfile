@@ -1,27 +1,34 @@
+# MemSOC interactive controller.
+#
+# Drives the complete workflow: generate flows -> live capture against the
+# detection API -> generate the security report. Run it attached:
+#
+#   docker compose -f deploy/docker-compose.yml run --rm controller
+
 FROM python:3.13-slim
 
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-    pandas==2.2.3 \
-    numpy==2.2.6 \
-    requests==2.32.3
+COPY requirements/controller.txt ./requirements/controller.txt
+RUN pip install --no-cache-dir -r requirements/controller.txt
 
-COPY Deployment/controller/controller.py /app/controller.py
+COPY src/ ./src/
 
-COPY Deployment/log_generation/ /app/log_generation/
-COPY LLMTriage/ /app/LLMTriage/
+ENV MEMSOC_ROOT=/app \
+    MEMSOC_DATA_DIR=/data \
+    MEMSOC_ARTIFACTS_DIR=/artifacts \
+    MEMSOC_MODELS_DIR=/app/models \
+    MEMSOC_LOG_DIR=/app/logs \
+    MEMSOC_API_HOST=detection \
+    MEMSOC_API_PORT=8000 \
+    MEMSOC_REPORT_HOST=report \
+    MEMSOC_REPORT_PORT=8001 \
+    PYTHONPATH=/app/src
 
-ENV MEMSOC_ROOT=/app
-ENV MEMSOC_DATA_DIR=/data
-ENV MEMSOC_ARTIFACTS_DIR=/artifacts
-ENV MEMSOC_API_HOST=detection
-ENV MEMSOC_API_PORT=8000
-ENV DETECTION_API_URL=http://detection:8000/api/logs
-ENV PYTHONPATH=/app:/app/LLMTriage
+RUN mkdir -p /data /artifacts /app/models /app/logs
 
-CMD ["python", "-u", "/app/controller.py"]
+CMD ["python", "-u", "-m", "memsoc.controller"]

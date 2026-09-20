@@ -1,10 +1,8 @@
-# Runtime dependencies for the MemSOC container.
+# Runtime dependencies for the MemSOC detection container (Layer 2).
 #
-# Deliberately separate from final_ml_model_v1/requirements.txt, which is a
-# full `pip freeze` of a Jupyter development environment (121 packages, UTF-16
-# encoded). That file is a lockfile for the research environment and is left
-# untouched; this is the minimal set the API and the log pipeline actually
-# import at runtime.
+# Deliberately separate from research-lock.txt, which is a full `pip freeze`
+# of the Jupyter research environment. This is the minimal set the detection
+# API actually imports at runtime.
 #
 # Versions are pinned to the ones the models were trained and validated
 # against. joblib unpickles LightGBM/scikit-learn objects, so a version drift

@@ -1,8 +1,10 @@
 import pandas as pd
 import requests
 
+from memsoc import paths
 
-DATASET_PATH = "data/raw/NF-UNSW-NB15-v3.csv"
+
+DATASET_PATH = paths.DATASET_CSV
 
 
 # --------------------------------------------------
