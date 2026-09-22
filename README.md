@@ -92,15 +92,82 @@ Both arms replay the identical alert sequence. Compared on:
 
 ## Running it
 
-See **[`DOCKER.md`](./DOCKER.md)** for step-by-step build, run and test
-instructions (Docker and native).
+> **Setting up, or pulling after the restructure?** Read
+> **[`docs/deployment/operations.md` §2 — Before You Test](./docs/deployment/operations.md)**
+> first. It covers first-time setup, migrating off the old `Deployment/`
+> layout (order matters — stop the old stack *before* pulling), which
+> images to rebuild, and a four-step pre-test checklist.
+
+Three services start by default — detection (`:8000`), report (`:8001`)
+and the dashboard (`:8080`):
+
+```bash
+docker compose -f deploy/docker-compose.yml build
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+Then open <http://localhost:8080> for the dashboard, or
+<http://localhost:8080/api-docs> for **one page documenting every endpoint
+in both services**, with working "Try it out" buttons. Each service also
+keeps its own `/docs` on its own port.
+
+Drive the full workflow interactively — generate flows, classify them,
+produce a report:
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile workflow run --rm controller
+```
+
+Useful one-shots:
+
+```bash
+# what resolved where, and what is missing
+docker compose -f deploy/docker-compose.yml --profile tools run --rm paths
+
+# contract tests
+docker compose -f deploy/docker-compose.yml --profile tools run --rm tests
+```
+
+Every published port is defined once in `deploy/docker-compose.yml` and
+can be overridden from `.env` (`MEMSOC_DETECTION_PORT`,
+`MEMSOC_REPORT_PORT`, `MEMSOC_DASHBOARD_PORT`).
+
+Full instructions, including the native (non-Docker) path:
+**[`docs/deployment/operations.md`](./docs/deployment/operations.md)**.
+
+---
+
+## Layout
+
+One source tree. `deploy/` holds build and orchestration files only.
+
+```text
+src/memsoc/        the application
+├── paths.py       single source of truth for every path
+├── api/           EVERY HTTP endpoint in the system
+├── logstream/     Layer 1 — deterministic NetFlow replay
+├── detection/     Layer 2 — frozen LightGBM + SHAP
+├── memory/        Layer 3 — the memory layer (the research variable)
+├── triage/        Layer 4 — LLM triage and reporting
+└── controller.py  interactive end-to-end workflow driver
+
+models/            the two LightGBM pickles
+dashboard/         React app
+deploy/            Dockerfiles + compose
+requirements/      one file per deployable
+artifacts/         all runtime output (gitignored)
+tests/  docs/  data/
+```
 
 ---
 
 ## Repository
 
-- [`CLAUDE.md`](./CLAUDE.md) — full project brief and authoritative design context. **Read this first.**
-- [`docs/memory-layer/`](./docs/memory-layer/) — documentation for the memory layer (Layer 3): architecture, case schema, read/write paths, configuration, risks, and open questions.
+- [`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md) — authoritative design context. **Read this first.**
+- [`CLAUDE.md`](./CLAUDE.md) — operating rules for anyone, human or AI, working in this repo.
+- [`docs/README.md`](./docs/README.md) — documentation index.
+- [`docs/PRODUCT_BACKLOG.md`](./docs/PRODUCT_BACKLOG.md) — **every known bug, gap and piece of tech debt.** Check here before assuming something is finished.
+- [`docs/memory-layer/`](./docs/memory-layer/) — the memory layer (Layer 3): architecture, case schema, read/write paths, configuration, risks, open questions.
 
 ## Roadmap
 

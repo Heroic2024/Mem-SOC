@@ -1,0 +1,27 @@
+# Runtime dependencies for the MemSOC detection container (Layer 2).
+#
+# Deliberately separate from research-lock.txt, which is a full `pip freeze`
+# of the Jupyter research environment. This is the minimal set the detection
+# API actually imports at runtime.
+#
+# Versions are pinned to the ones the models were trained and validated
+# against. joblib unpickles LightGBM/scikit-learn objects, so a version drift
+# here is a silent correctness risk, not just a compatibility one.
+
+# Inference
+lightgbm==4.7.0
+scikit-learn==1.7.1
+shap==0.48.0
+joblib==1.5.2
+
+# Data
+pandas==2.2.3
+numpy==2.2.6
+
+# API
+fastapi==0.115.12
+uvicorn==0.44.0
+pydantic==2.12.5
+
+# Client
+requests==2.32.3

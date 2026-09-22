@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemSOC API</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; background: #fafafa; }
+  .memsoc-banner {
+    background: #1a2744; color: #e8eefc;
+    padding: 18px 24px; font: 14px/1.5 system-ui, sans-serif;
+  }
+  .memsoc-banner h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+  .memsoc-banner p { margin: 0; opacity: .85; max-width: 78ch; }
+  .memsoc-banner code {
+    background: rgba(255,255,255,.12); padding: 1px 5px; border-radius: 3px;
+  }
+  .swagger-ui .topbar { display: none; }
+</style>
+</head>
+<body>
+  <div class="memsoc-banner">
+    <h1>MemSOC API</h1>
+    <p>
+      Every endpoint across both services, on one page. Paths are shown as
+      this gateway exposes them &mdash; <code>/services/detection/&hellip;</code>
+      and <code>/services/report/&hellip;</code> &mdash; so
+      <strong>Try it out</strong> calls the real service through the same
+      origin. Each service also serves its own <code>/docs</code> on its own
+      port if you need to debug one in isolation.
+    </p>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+  <script>
+    window.ui = SwaggerUIBundle({
+      url: '/api-docs/openapi.json',
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      tryItOutEnabled: true,
+      docExpansion: 'list',
+      presets: [SwaggerUIBundle.presets.apis],
+      layout: 'BaseLayout'
+    });
+  </script>
+</body>
+</html>

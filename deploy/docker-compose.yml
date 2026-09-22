@@ -1,0 +1,281 @@
+# MemSOC container services.
+#
+#   docker compose -f deploy/docker-compose.yml build
+#   docker compose -f deploy/docker-compose.yml up -d
+#   docker compose -f deploy/docker-compose.yml --profile tools run --rm paths
+#   docker compose -f deploy/docker-compose.yml --profile workflow run --rm controller
+#
+# Three daemons start by default: detection, report, dashboard. The
+# one-shot jobs (log generation, the controller, the path dump, the test
+# suite) sit behind profiles so `up` does not try to run them.
+#
+# Every service builds from the REPO ROOT so they all share one source
+# tree. There is no per-service copy of the code.
+#
+# The dataset is not in any image -- point MEMSOC_HOST_DATA at the
+# directory holding NF-UNSW-NB15-v3.csv (at any depth; paths.py walks the
+# tree). Defaults to ../data, correct for a normal checkout.
+#
+# TWO env files, and they are not interchangeable:
+#
+#   deploy/.env   read by Compose for ${...} interpolation below, because
+#                 the project directory is THIS directory, not the repo
+#                 root. Holds non-secret overrides (ports, dataset path).
+#                 Template: deploy/.env.example
+#   ../.env       injected INTO the report and controller containers via
+#                 `env_file`. Everything in it reaches those containers,
+#                 so it holds only GROQ_API_KEY. Personal credentials go
+#                 in ../.env.developer, which nothing here reads (BL-020).
+#
+# PORTS. Every published port is defined once, here, and defaults to the
+# value in the table below. Override in deploy/.env, e.g.
+# MEMSOC_DASHBOARD_PORT=9090, if something else on the host already owns
+# one of them.
+#
+#     service     container   host (default)
+#     detection      8000     MEMSOC_DETECTION_PORT  8000
+#     report         8001     MEMSOC_REPORT_PORT     8001
+#     dashboard        80     MEMSOC_DASHBOARD_PORT  8080
+#
+# The dashboard bundle runs in the operator's BROWSER, but it no longer
+# needs to know any port: it fetches the report API at a relative path
+# that this stack's own nginx proxies. So the published ports below can
+# change freely without rebuilding the dashboard image, and the page
+# works from any host, not just localhost.
+
+name: memsoc
+
+# Shared by every Python service: one source tree, one artifacts directory.
+x-python-common: &python-common
+  environment: &python-env
+    MEMSOC_ROOT: /app
+    MEMSOC_ARTIFACTS_DIR: /artifacts
+    MEMSOC_LOG_DIR: /app/logs
+    PYTHONPATH: /app/src
+  restart: unless-stopped
+
+services:
+
+  # ------------------------------------------------------------------
+  # Layer 2 -- detection. Frozen LightGBM classifier + SHAP.
+  # ------------------------------------------------------------------
+  detection:
+    build:
+      context: ..
+      dockerfile: deploy/detection.Dockerfile
+    image: memsoc-detection:latest
+    container_name: memsoc-detection
+    environment:
+      <<: *python-env
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: 127.0.0.1
+      MEMSOC_API_BIND: 0.0.0.0
+      MEMSOC_API_PORT: 8000
+    ports:
+      - "${MEMSOC_DETECTION_PORT:-8000}:8000"
+    volumes:
+      - ../artifacts:/artifacts
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Layer 4 -- report API. Read-only; serves generated report JSON.
+  # ------------------------------------------------------------------
+  report:
+    build:
+      context: ..
+      dockerfile: deploy/report.Dockerfile
+    image: memsoc-report:latest
+    container_name: memsoc-report
+    # Injected wholesale into this container -- keep it to GROQ_API_KEY.
+    env_file:
+      - ../.env
+    environment:
+      <<: *python-env
+      DETECTION_API_URL: http://detection:8000/api/logs
+      MEMSOC_REPORT_PORT: 8001
+      # So paths.API_BASE resolves to the detection service in-network.
+      # routes_docs.py fetches its OpenAPI spec from there to build the
+      # merged document that /api-docs renders.
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+    ports:
+      - "${MEMSOC_REPORT_PORT:-8001}:8001"
+    volumes:
+      - ../artifacts:/artifacts
+    depends_on:
+      detection:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Dashboard + gateway. Static React bundle behind nginx, which also
+  # fronts both APIs on one origin so /api-docs can document and call
+  # every endpoint from a single page. See deploy/nginx.conf.
+  #
+  #   http://localhost:${MEMSOC_DASHBOARD_PORT:-8080}/api-docs
+  # ------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/dashboard.Dockerfile
+    image: memsoc-dashboard:latest
+    container_name: memsoc-dashboard
+    ports:
+      - "${MEMSOC_DASHBOARD_PORT:-8080}:80"
+    # nginx resolves both upstream names at startup, so both containers
+    # must exist before this one starts.
+    depends_on:
+      detection:
+        condition: service_healthy
+      report:
+        condition: service_started
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Layer 1 -- log generation. One-shot: generates flows and replays them
+  # against `detection` over HTTP (--no-api, it never loads a model).
+  #
+  # The model pickles are only stat()'d by preflight, never loaded, so
+  # they are mounted read-only rather than copied into the image.
+  # ------------------------------------------------------------------
+  logstream:
+    profiles: ["tools", "workflow"]
+    build:
+      context: ..
+      dockerfile: deploy/logstream.Dockerfile
+    image: memsoc-logstream:latest
+    container_name: memsoc-logstream
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    depends_on:
+      detection:
+        condition: service_healthy
+    restart: "no"
+    command: ["--flows", "100"]
+
+  # ------------------------------------------------------------------
+  # Interactive controller for the complete workflow: generate logs ->
+  # live capture -> security report. Run it attached:
+  #
+  #   docker compose -f deploy/docker-compose.yml \
+  #     --profile workflow run --rm controller
+  # ------------------------------------------------------------------
+  controller:
+    profiles: ["workflow"]
+    build:
+      context: ..
+      dockerfile: deploy/controller.Dockerfile
+    image: memsoc-controller:latest
+    container_name: memsoc-controller
+    stdin_open: true
+    tty: true
+    # Injected wholesale into this container -- keep it to GROQ_API_KEY.
+    env_file:
+      - ../.env
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+      DETECTION_API_URL: http://detection:8000/api/logs
+      # Host-facing URLs the controller prints for the operator to click.
+      MEMSOC_DASHBOARD_URL: http://localhost:${MEMSOC_DASHBOARD_PORT:-8080}
+      MEMSOC_REPORT_URL: http://localhost:${MEMSOC_REPORT_PORT:-8001}
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    depends_on:
+      detection:
+        condition: service_healthy
+      report:
+        condition: service_started
+    restart: "no"
+
+  # ------------------------------------------------------------------
+  # Tools. Folded in from the deleted root docker-compose.yml so those
+  # one-shot commands did not disappear with it.
+  # ------------------------------------------------------------------
+
+  # Resolved path layout and what is missing. Run this first if anything
+  # fails to find its inputs.
+  paths:
+    profiles: ["tools"]
+    image: memsoc-logstream:latest
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    entrypoint: ["python", "-m", "memsoc.paths"]
+    restart: "no"
+
+  # Rebuild artifacts/generated_logs.jsonl from the CSV. Needs the dataset
+  # mounted and takes a few minutes -- two full scans of 2.36M rows.
+  generate:
+    profiles: ["tools"]
+    image: memsoc-logstream:latest
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+    entrypoint:
+      - python
+      - -m
+      - memsoc.logstream.run_pipeline
+    command: ["--regenerate", "--sample-size", "5000", "--flows", "10", "--no-api"]
+    restart: "no"
+
+  # Contract tests. The live tier needs an API, so bring `detection` up
+  # alongside if you want that tier to run rather than skip.
+  tests:
+    profiles: ["tools"]
+    image: memsoc-logstream:latest
+    environment:
+      <<: *python-env
+      MEMSOC_DATA_DIR: /data
+      MEMSOC_MODELS_DIR: /app/models
+      MEMSOC_API_HOST: detection
+      MEMSOC_API_PORT: 8000
+      # The gateway is the dashboard container. Inside the network it is
+      # reachable by service name on port 80, not on the published port.
+      MEMSOC_GATEWAY_BASE: http://dashboard:80
+    volumes:
+      - ${MEMSOC_HOST_DATA:-../data}:/data:ro
+      - ../models:/app/models:ro
+      - ../artifacts:/artifacts
+      - ../tests:/app/tests:ro
+      # test_gateway_contract.py reads these to compare the four places
+      # the gateway prefix is declared (BL-071). Read-only.
+      - ../deploy:/app/deploy:ro
+      - ../dashboard/src:/app/dashboard/src:ro
+      - ../dashboard/vite.config.js:/app/dashboard/vite.config.js:ro
+    entrypoint:
+      - python
+      - -m
+      - unittest
+      - discover
+      - -s
+      - /app/tests
+      - -p
+      - "test_*.py"
+      - -v
+    restart: "no"

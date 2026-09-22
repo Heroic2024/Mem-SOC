@@ -1,0 +1,13 @@
+# Runtime dependencies for the MemSOC report container (Layer 4).
+#
+# Read-only: it serves already-generated report JSON and calls the Groq
+# API. It never loads a model and never reads the dataset, so none of
+# lightgbm/scikit-learn/shap/pandas appears here.
+
+# API
+fastapi==0.115.12
+uvicorn==0.44.0
+pydantic==2.12.5
+
+# Groq client + detection API client
+requests==2.32.3
