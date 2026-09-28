@@ -64,3 +64,115 @@ DEFAULT_CAPTURE_INTERVAL = 0.0
 # written. This is an explicit, documented retention policy, not an
 # incidental side effect.
 REPORTS_TO_KEEP = 10
+
+# ----------------------------------------------------------------------
+# Phase 1 per-alert triage (Arm A -- the memoryless baseline).
+#
+# triage_runner.py appends one verdict per alert to VERDICTS_PATH and
+# reads it back on startup to skip alerts already triaged, so a crashed
+# or repeated run costs no additional API requests.
+#
+# GROUND_TRUTH_PATH is read ONLY by score_verdicts.py, after a run.
+# Nothing on the triage path may open it -- ground-truth labels are the
+# evaluation oracle (PROJECT_BRIEF.md section 5) and must never reach
+# the prompt.
+# ----------------------------------------------------------------------
+
+# Headroom for one per-alert triage verdict.
+#
+# This is not a cosmetic setting. Groq counts prompt tokens plus the
+# *requested* max_tokens against the tokens-per-minute quota, whatever
+# the model actually returns, so an oversized reservation throttles
+# throughput for nothing.
+#
+# It cannot simply be set to the size of the answer, either. gpt-oss-20b
+# is a reasoning model and spends completion tokens thinking before it
+# emits content -- caps of 500, 1500, 2500 and 4000 were all observed to
+# truncate on at least one alert. C1424253008630-11300-119, a large HTTP
+# flow with heavy retransmission, spent 3998 tokens reasoning without
+# emitting content.
+#
+# 6000 is near the practical ceiling: the feature-rich prompt runs about
+# 1200 tokens, and prompt + max_tokens must stay under the 8000 TPM
+# quota or every request is rejected outright. That leaves roughly one
+# request per minute.
+TRIAGE_MAX_RESPONSE_TOKENS = 6000
+
+# The triage path sends NO reasoning_effort parameter, which is what the
+# 2026-08-30 baseline run did. The report path above sets "low"; adopting
+# that here would change how hard the model thinks, which is part of what
+# this experiment measures, and would make new verdicts incomparable with
+# the 40 already recorded. None means the key is omitted from the payload.
+TRIAGE_REASONING_EFFORT = None
+
+# A response truncated mid-reasoning is retried this many times before
+# the run stops. Retrying is not the same as skipping the alert: no
+# verdict is ever fabricated or defaulted, and if every attempt
+# truncates the run halts so the alert can be dealt with explicitly.
+TRUNCATION_MAX_RETRIES = 2
+
+# Bounded retry for HTTP 429. Groq's rate-limit response states how long
+# to wait, so the retry honours that rather than guessing. Retries are
+# capped: a persistent 429 means the budget is genuinely exhausted and
+# the run should stop rather than spin.
+RATE_LIMIT_MAX_RETRIES = 5
+RATE_LIMIT_FALLBACK_WAIT = 20.0
+
+# ----------------------------------------------------------------------
+# Daily request budget.
+#
+# The Groq free tier allows 1000 requests per day, and a rate-limited
+# (429) response still consumes one. Every HTTP call is counted, retries
+# included, and the run stops before the cap rather than discovering it
+# mid-experiment -- Arm B needs its share of the same day's budget, and
+# an Arm A that eats the whole allowance leaves the comparison
+# half-finished.
+#
+# The reserve is deliberate headroom: it leaves room to re-triage a
+# handful of alerts without waiting for the quota to reset.
+# ----------------------------------------------------------------------
+DAILY_REQUEST_LIMIT = 1000
+DAILY_REQUEST_RESERVE = 100
+
+# Seconds to wait between triage calls.
+#
+# Pacing is cheaper than retrying. At roughly 7200 tokens per request
+# against an 8000 tokens-per-minute quota, sending faster than one call
+# per minute guarantees a 429 -- and a 429 costs a request from the
+# daily budget while returning nothing. Measured over one run, retries
+# cost 33 requests to obtain 14 verdicts.
+TRIAGE_PACE_SECONDS = 55.0
+
+# Stratified subsample of the alerts, so a run fits in about an hour
+# instead of three at the ~1 alert/minute the TPM quota allows.
+#
+# Capped per detector category rather than sampled uniformly: the rare
+# categories are where the detector's category errors concentrate
+# (Exploits->Fuzzers, Reconnaissance->Fuzzers), so uniform sampling
+# would thin out exactly the alerts the primary metric depends on.
+# Categories at or below the cap are taken whole.
+SAMPLE_PER_CATEGORY = 12
+SAMPLE_SEED = 20260830
+
+# The raw flow stream. Read by triage_runner.py to join the 48 NetFlow
+# v3 feature values onto each alert: live_results.jsonl carries only the
+# detector's output and its SHAP attributions, and SHAP contributions
+# without the underlying feature values are not something an analyst --
+# human or model -- can reason from.
+#
+# Read-only, and for feature values only. This file carries no Label or
+# Attack column, so joining it introduces no oracle.
+STREAM_PATH = Path(paths.GENERATED_LOGS)
+
+VERDICTS_PATH = Path(paths.TRIAGE_VERDICTS)
+
+# The chosen uids are written here on first use and reused thereafter,
+# so both arms are guaranteed the identical alert set even if the cap or
+# seed is later changed. Delete it only to deliberately redefine the
+# sample -- which invalidates comparison with any run that preceded it.
+SAMPLE_MANIFEST_PATH = Path(paths.SAMPLE_MANIFEST)
+
+REQUEST_BUDGET_PATH = Path(paths.REQUEST_BUDGET)
+
+# The evaluation oracle. score_verdicts.py is the only reader.
+GROUND_TRUTH_PATH = Path(paths.GROUND_TRUTH)

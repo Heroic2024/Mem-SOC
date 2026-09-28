@@ -139,6 +139,20 @@ MODEL_OUTPUTS_DIR = _env(
 )
 LIVE_RESULTS = os.path.join(MODEL_OUTPUTS_DIR, "live_results.jsonl")
 
+# Phase 1 per-alert triage (Layer 4). triage_runner.py appends one verdict
+# per alert here and reads it back on startup to skip alerts already
+# triaged, which is what makes an interrupted run resume at no API cost.
+# score_verdicts.py joins this file to GROUND_TRUTH after the run.
+TRIAGE_VERDICTS = os.path.join(MODEL_OUTPUTS_DIR, "triage_verdicts.jsonl")
+
+# The pinned stratified alert sample. Both arms must triage the identical
+# set, so the chosen uids are written once and reused thereafter.
+SAMPLE_MANIFEST = os.path.join(MODEL_OUTPUTS_DIR, "sample_manifest.json")
+
+# Running count of API requests made today, so a run stops before the
+# provider's daily cap rather than discovering it mid-experiment.
+REQUEST_BUDGET = os.path.join(MODEL_OUTPUTS_DIR, "request_budget.json")
+
 # Generated security reports, served read-only by the report API.
 REPORTS_DIR = _env("MEMSOC_REPORTS_DIR", os.path.join(ARTIFACTS_DIR, "reports"))
 
@@ -198,6 +212,7 @@ def describe() -> str:
         ("ARTIFACTS_DIR", ARTIFACTS_DIR, False),
         ("GENERATED_LOGS", GENERATED_LOGS, False),
         ("MODEL_OUTPUTS_DIR", MODEL_OUTPUTS_DIR, False),
+        ("TRIAGE_VERDICTS", TRIAGE_VERDICTS, False),
         ("REPORTS_DIR", REPORTS_DIR, False),
         ("LOG_DIR", LOG_DIR, False),
         ("API_BASE", API_BASE, False),
