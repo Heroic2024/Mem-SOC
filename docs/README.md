@@ -3,6 +3,10 @@
 Start here. Design context is in [`../PROJECT_BRIEF.md`](../PROJECT_BRIEF.md);
 agent operating rules are in [`../CLAUDE.md`](../CLAUDE.md).
 
+Every question the project still has to answer, and the answers already
+settled, are in **[`decisions.md`](./decisions.md)**. Read that before
+starting work.
+
 Open work — bugs, gaps, tech debt — is tracked in
 **[`PRODUCT_BACKLOG.md`](./PRODUCT_BACKLOG.md)**. Anything not done, not
 specified clearly enough, or known to be wrong belongs there.
@@ -35,6 +39,7 @@ package under `src/memsoc/` and one directory here.
 
 | I want to… | Read |
 |---|---|
+| **Know what still needs deciding, and what was already decided** | [`decisions.md`](./decisions.md) |
 | **Set up, or pull after the restructure** | [`deployment/operations.md`](./deployment/operations.md) **§2 — Before You Test** |
 | Run the stack | [`deployment/operations.md`](./deployment/operations.md) |
 | Browse every API endpoint in one place | `http://localhost:8080/api-docs` — see [`deployment/architecture.md`](./deployment/architecture.md) |
@@ -51,6 +56,7 @@ package under `src/memsoc/` and one directory here.
 ```text
 docs/
 ├── README.md                  this file
+├── decisions.md               open questions + settled decisions
 ├── PRODUCT_BACKLOG.md         central register of open work
 ├── architecture/              system-wide views
 │   ├── end-to-end-pipeline.md
