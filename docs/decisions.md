@@ -79,6 +79,8 @@ reports the no-memory arm would be rejected. So the comparison has to happen.
 Minimum scope: one LLM, one prompt version, 3 repeat runs per arm. Dropped for
 now: a second LLM, few-shot prompting comparison.
 
+Answer: Using one LLM, we will try with different ways of storing the cases in the vector database
+
 ### A3. What goes into memory — the LLM's own conclusions, or the true answers?
 
 **Answer: both, as two separate conditions.**
@@ -99,9 +101,14 @@ Full reasoning, including what was rejected and why, is in
 [`memory-layer/07-open-questions.md`](./memory-layer/07-open-questions.md) OQ-2.
 Build work is BL-015.
 
+Answer: Experiment with 2 ways:
+
+-  store only LLM verdicts
+
+- store a mix of llm verdicts and ground truth
 ### A4. Free API tier or paid?
 
-**Answer: paid.**
+**Answer: free: we are not going for the paid version since we do not have the bduget**
 
 The free tier allows roughly 40 alerts per day in total. The runs this project
 needs are in the low thousands of calls. Paying removes the constraint for a
@@ -132,6 +139,8 @@ guessing.
 
 **Status:** blocked on a free measurement. Tracked as BL-012.
 
+**Answer**: try with the other untrained-on data and see how many FPs we get. If we get satisfactory number of FPs, we will go ahead with the testing of the vector database. 
+
 ### B2. Do harmless flows get sent to the LLM as well?
 
 **The question:** right now only flows the detector flagged reach the LLM. Should
@@ -149,6 +158,8 @@ decides how much it matters.
 
 **Status:** open. Tracked as BL-016.
 
+**Answer**: let us try this as well to create a confusion matrix for understanding. 
+
 ### B3. How many alerts do we triage, and how many times do we repeat each run?
 
 **The question:** 211 alerts? More? And 1 run each or 3?
@@ -164,6 +175,8 @@ only the LLM's randomness and never the order of the alerts. Report a range, not
 a single figure, for every number. Compare the two arms alert-by-alert
 (a paired test), not by comparing two averages.
 
+**Answer**: go with recommendation, and give me the result
+
 **Status:** open. Tracked as BL-017, and settles half of OQ-6.
 
 ### B4. Which version of the prompt do we use?
@@ -178,6 +191,8 @@ from memory looks bigger than it is.
 **Recommendation:** test all three on the no-memory arm, pick the strongest, then
 freeze it and use the same one in both arms. Making the baseline *stronger* works
 against memory, so this is the safe direction to tune in.
+
+**Answer: Go ahead with recommendation**
 
 **Status:** open. Tracked as BL-018.
 
@@ -195,7 +210,9 @@ the same time window, and model drift listed as a limitation.
 
 **Status:** open. Related to BL-009.
 
----
+**Answer:** gemini-3.8-flash, temperature should be at a higher deterministic leve, balance it so that we can get satisfactory results for the paper
+
+--
 
 # Part C — Answer before building the memory layer
 
@@ -218,6 +235,8 @@ on the 24 alerts the detector got wrong. The overall number improves while the
 thing we are trying to measure is destroyed. Storing the LLM's full reasoning
 would be a stronger version of the same problem.
 
+**Answer**: if there is space, let us go with the both the verdicts. Else, decide how you want to store it accrodingly. We have to get to the aim.
+
 **Status:** open. OQ-1.
 
 ### C2. Which embedding model, at which exact version?
@@ -234,6 +253,8 @@ locked it cannot be changed without rebuilding every stored alert.
 **Status:** open. OQ-8. The version pin is currently written down **nowhere** in
 this repository.
 
+**Answer:** go through the docs\embedding-model-options.md and decide what to go with
+
 ### C3. Which description format for a stored alert — the long one or the short one?
 
 **Recommendation: the short one, because it fits.** The long format runs to 273
@@ -249,7 +270,9 @@ reason.
 
 **Status:** open, measurement done. Tracked as BL-013, recorded under OQ-8.
 
-### C4. Where does the stored attack type come from?
+**Answer:** depends on embedding model, decide which is the best
+
+## C4. Where does the stored attack type come from?
 
 **Recommendation:** the LLM's own answer, kept as a separate field from the
 detector's answer. Where the two disagree is itself a result worth reporting.
@@ -269,13 +292,16 @@ the answer key.
 
 **Status:** open. OQ-5.
 
-### C6. Does memory carry over between runs?
+**Answer: **  decide this, we need to get results ASAP, let us go ahead with whatever gives us satisfactory results 
+## C6. Does memory carry over between runs?
 
 **Recommendation: no.** Each scored run gets its own fresh store on disk. Memory
 surviving a restart is a real product property and is satisfied by this; memory
 carrying across scored runs would make run 2 incomparable to run 1.
 
 **Status:** open. OQ-7.
+
+**Answer: ** explanation needed
 
 ### C7. Is memory pre-loaded before the run starts?
 
@@ -289,14 +315,32 @@ hand-written cases would be inserting our own beliefs into the result.
 
 **Status:** open. OQ-4. Note the A3 decision does **not** settle this.
 
-### C8. How many past alerts get retrieved, and is there a similarity cut-off?
+**Answer:** Brand new memory after every run
+
+## C8. How many past alerts get retrieved, and is there a similarity cut-off?
 
 **Recommendation: 3, and no cut-off.**
 
 - **3, not more:** the 2nd-to-5th closest matches are worse than the closest, so a bigger number adds noise.
 - **No cut-off:** right and wrong matches score virtually the same — 0.998 against 0.997 — so there is no threshold that separates good matches from bad ones. Try the sweep anyway and report that it found nothing.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 **Status:** open. Tracked within BL-005.
+
+**Ans**: max 3 retrievals
 
 ### C9. Does the detector get a version identifier?
 
@@ -306,6 +350,8 @@ an alert.
 **Recommendation: add one.** Without it, an accidental change to the detector
 would be undetectable afterwards, and a stored alert cannot be traced back to the
 model that produced it.
+
+Ans: version id should be there
 
 **Status:** open. Tracked as BL-075. Quick to fix.
 
@@ -317,7 +363,7 @@ A version number makes that a clean break instead of silent corruption.
 
 **Status:** open. Tracked as BL-006. Quick to fix.
 
----
+Ans: yes this has to be there---
 
 # Part D — Answer before submitting the paper
 
@@ -373,10 +419,13 @@ Not judgement calls. Someone has to go and look.
 Needed to schedule the runs and to state the cost in the paper. Check
 `console.groq.com/settings/limits`. Tracked as BL-011.
 
-### E2. When is the paper due?
+Ans: not using paid tier
+## E2. When is the paper due?
 
 Everything in Part B and Part C is sized against this and it is not written down
 anywhere.
+
+14th October
 
 ### E3. What are "B11", "D1" and "B6"?
 
