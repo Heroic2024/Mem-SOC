@@ -140,6 +140,48 @@ Answer: Experiment with 2 ways:
 -  store only LLM verdicts
 
 - store a mix of llm verdicts and ground truth
+
+**Settled 2026-10-10 — three conditions, one switch, and the mix is dropped.**
+
+A proposal came up to give each of the three of us one memory variant to
+build: one stores LLM verdicts, one stores a mix, one stores the true labels.
+**Rejected — and note this question was already answered above**, in the
+sentence "the two conditions are one switch on the memory module, not two
+separate sets of code," and in the line ruling out true-labels-only. The full
+reasoning is in [`work-split.md`](./work-split.md); the short version is that
+three separately-written memory layers give three codepaths, and then a
+difference in results could come from a difference in implementation rather
+than from the memory. That is the one thing that would make the whole
+comparison unattributable.
+
+The conditions we run:
+
+| Condition | Memory holds | Status |
+|---|---|---|
+| **Arm A** | nothing | Baseline. Required. |
+| **Arm B-self** | the LLM's own past verdicts, right or wrong | **The headline. The deployable system.** |
+| **Arm B-oracle** | the true labels | A declared **ceiling**, never the headline. Run only if budget allows. |
+
+**The "mix" condition is dropped.** A stored case holding both the LLM's
+verdict and the true label will be read by the LLM as the true label, so the
+mix collapses onto Arm B-oracle. It would have cost a third of the API budget
+for a near-duplicate of a condition we were already running.
+
+**If we want a third variant, it should vary the write policy instead** —
+write every case, versus only high-confidence ones. That tests memory
+poisoning, which is a live risk rather than a hypothetical: BL-014 measured
+nearest-neighbour retrieval as *worse than random* on exactly the alerts the
+detector got wrong, carrying the wrong attack family 70.8% of the time.
+"Does memory poison itself with its own mistakes?" is a stronger contribution
+than measuring the oracle twice. Not adopted yet — raise it if Arm B-self
+lands early.
+
+Running a condition is a **config change**, made by whoever has API budget
+when the module lands. It is not a build task and it is not owned by anyone.
+Work is divided by layer instead — see [`work-split.md`](./work-split.md).
+
+**Status:** answered. Build work is BL-015 (the switch) and BL-002 (the module).
+
 ### A4. Free API tier or paid?
 
 **Answer: free: we are not going for the paid version since we do not have the bduget**
