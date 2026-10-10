@@ -9,11 +9,24 @@ ignores but that makes the stream look like real sensor output.
 Pipeline:
       NF-UNSW-NB15-v3.csv  (55 columns, 2.36M rows)
                 |
-                v   drop non-finite -> seeded selection -> seeded shuffle
+                v   restrict to held-out rows -> drop non-finite
+                v   -> seeded selection -> seeded shuffle
       generated_logs.jsonl   (envelope + 48 features)
       ground_truth.csv       (uid,label,attack -- held out)
 
 Ground truth is written to a SEPARATE file, never into the log. See README.
+
+Stream version 2 (2026-10-10): the pool is restricted to rows the frozen
+detector never trained on. Version 1 sampled the whole dataset and so
+overlapped the training set on 82% of its flows, which inflated every
+detector figure measured against it (BL-025). The held-out row numbers come
+from artifacts/heldout_rows.npy, produced and verified by
+`memsoc.detection.training.heldout_split` -- run that first.
+
+The restriction costs sample density, and the cost is the reason SAMPLE_SIZE
+moved: the held-out pool is 1.13% attacks against 5.43% in the full dataset,
+because the binary and multiclass splits are independent and an unseen attack
+row has to sit outside both training sets (BL-100).
 
 Note on non-finite rows: ~5.18% of the dataset carries NaN or inf in
 SRC_TO_DST_SECOND_BYTES / DST_TO_SRC_SECOND_BYTES. The inference pipeline
@@ -39,13 +52,24 @@ from memsoc import paths
 INPUT_CSV = paths.DATASET_CSV
 OUTPUT_JSONL = paths.GENERATED_LOGS
 GROUND_TRUTH_CSV = paths.GROUND_TRUTH
+HELD_OUT_ROWS = paths.HELD_OUT_ROWS
 
 SEED = 42              # fixed: same seed -> byte-identical output
+
+# Bumped whenever the sampled POPULATION changes, which is not the same thing
+# as changing the seed. Records carrying different stream versions are not
+# comparable and must never be pooled.
+STREAM_VERSION = "2"
 
 # Flows to draw from the eligible pool. The controller overrides this per run
 # via MEMSOC_SAMPLE_SIZE; the seed is NOT overridable, so a given sample size
 # always yields the same sequence.
-SAMPLE_SIZE = int(os.environ.get("MEMSOC_SAMPLE_SIZE", "5000"))
+#
+# 25,000 rather than 5,000 because the pool is now held-out only. At a 1.13%
+# attack base rate, 5,000 flows would yield about 56 attacks -- fewer than the
+# 211 the contaminated stream produced, and far short of the several hundred
+# alerts the evaluation needs. 25,000 yields roughly 280.
+SAMPLE_SIZE = int(os.environ.get("MEMSOC_SAMPLE_SIZE", "25000"))
 
 CHUNK_SIZE = 200_000   # rows held in memory at once
 
@@ -103,10 +127,62 @@ def eligible_mask(chunk: pd.DataFrame, feature_columns: list) -> pd.Series:
     return ~(numeric.isna() | np.isinf(numeric.fillna(0))).any(axis=1)
 
 
+def load_held_out() -> np.ndarray:
+    """
+    The raw CSV row numbers the frozen detector never trained on.
+
+    Produced by `memsoc.detection.training.heldout_split`, which only
+    writes this file once it has reproduced the detector's published
+    fingerprint -- so its presence is itself the evidence that the
+    restriction below is meaningful.
+    """
+
+    if not os.path.exists(HELD_OUT_ROWS):
+        raise SystemExit(
+            f"Held-out row index not found: {HELD_OUT_ROWS}\n"
+            f"Run it first:\n"
+            f"    python -m memsoc.detection.training.heldout_split\n"
+            f"Without it this generator would sample the whole dataset and "
+            f"the stream would overlap the detector's training set (BL-025)."
+        )
+
+    held_out = np.load(HELD_OUT_ROWS)
+
+    print(f"Held-out rows loaded: {len(held_out):,}")
+
+    return held_out
+
+
+def pool_mask(
+    chunk: pd.DataFrame, feature_columns: list, held_out: np.ndarray
+) -> pd.Series:
+    """
+    The sampling pool: eligible AND never trained on.
+
+    Both passes below MUST compose the pool through this one function. The
+    selection pass tracks offsets *within the pool*, so if the counting
+    pass and the selection pass defined the pool even slightly
+    differently, the offsets would silently refer to different rows and
+    the stream would be wrong without anything raising.
+
+    `pd.read_csv(chunksize=...)` continues its RangeIndex across chunks,
+    so `chunk.index` already holds raw 0-based CSV data-row numbers -- the
+    same identity `heldout_split.py` wrote out, because `drop_duplicates()`
+    preserves index labels.
+    """
+
+    return (
+        eligible_mask(chunk, feature_columns)
+        & chunk.index.isin(held_out)
+    )
+
+
 # ---------------------------------------------------------------------
-# STEP 1: Seeded selection over eligible rows (never loads the whole file)
+# STEP 1: Seeded selection over the pool (never loads the whole file)
 # ---------------------------------------------------------------------
-def count_eligible(path: str, feature_columns: list) -> tuple:
+def count_eligible(
+    path: str, feature_columns: list, held_out: np.ndarray
+) -> tuple:
 
     total = 0
     eligible = 0
@@ -117,14 +193,17 @@ def count_eligible(path: str, feature_columns: list) -> tuple:
         chunk.columns = [c.strip() for c in chunk.columns]
 
         total += len(chunk)
-        eligible += int(eligible_mask(chunk, feature_columns).sum())
+        eligible += int(pool_mask(chunk, feature_columns, held_out).sum())
 
-        print(f"[scan {chunk_num}] {total:,} rows -- {eligible:,} eligible")
+        print(f"[scan {chunk_num}] {total:,} rows -- {eligible:,} in pool")
 
     return total, eligible
 
 
-def select_rows(path: str, feature_columns: list, eligible_total: int):
+def select_rows(
+    path: str, feature_columns: list, eligible_total: int,
+    held_out: np.ndarray
+):
 
     if SAMPLE_SIZE > eligible_total:
         raise ValueError(
@@ -147,20 +226,27 @@ def select_rows(path: str, feature_columns: list, eligible_total: int):
     ):
         chunk.columns = [c.strip() for c in chunk.columns]
 
-        chunk = chunk[eligible_mask(chunk, feature_columns)]
+        chunk = chunk[pool_mask(chunk, feature_columns, held_out)]
 
         positions = [
             i for i in range(len(chunk)) if offset + i in wanted
         ]
 
         if positions:
-            kept.append(chunk.iloc[positions])
+            selected = chunk.iloc[positions]
+
+            # Carried through the concat below, which otherwise discards the
+            # index. This is what lets anyone check afterwards that every
+            # streamed flow really came from the held-out pool.
+            selected = selected.assign(row_id=selected.index)
+
+            kept.append(selected)
             found += len(positions)
 
         offset += len(chunk)
 
         print(
-            f"[select {chunk_num}] {offset:,}/{eligible_total:,} eligible "
+            f"[select {chunk_num}] {offset:,}/{eligible_total:,} pool "
             f"scanned -- {found:,}/{SAMPLE_SIZE:,} selected"
         )
 
@@ -186,7 +272,22 @@ def to_native(value):
     return value
 
 
-def build_record(row: pd.Series, seq: int, feature_columns: list) -> dict:
+def build_record(
+    row, seq: int, feature_columns: list, stream_version: str = None
+) -> dict:
+    """
+    One row -> one API-shaped log record.
+
+    `row` is a pandas Series from this module and a plain dict from
+    stream_to_api.py, so only operations both support are used.
+
+    The provenance keys are written only when the caller can honestly
+    supply them. stream_to_api.py seeks rows through a byte-offset index
+    that carries no row identity and applies no held-out restriction, so
+    it passes neither -- and a record lacking these keys is therefore one
+    whose population is *not* known to exclude the detector's training
+    set. Defaulting them would turn that into a silent false claim.
+    """
 
     flow_start = int(row["FLOW_START_MILLISECONDS"])
     src_port = int(row["L4_SRC_PORT"])
@@ -202,6 +303,12 @@ def build_record(row: pd.Series, seq: int, feature_columns: list) -> dict:
         "id.resp_p": int(row["L4_DST_PORT"]),
         "proto": PROTO_MAP.get(proto_num, str(proto_num)),
     }
+
+    if "row_id" in row:
+        record["row_id"] = int(row["row_id"])
+
+    if stream_version is not None:
+        record["stream_version"] = stream_version
 
     # The 48 model features, flat at top level under their exact
     # dataset column names -- this is what validate_input() looks for.
@@ -240,7 +347,10 @@ def main():
     print("\n========== NF-UNSW-NB15 LOG GENERATION ==========\n")
     print(f"Source : {INPUT_CSV}")
     print(f"Seed   : {SEED}")
+    print(f"Stream : version {STREAM_VERSION} (held-out rows only)")
     print(f"Sample : {SAMPLE_SIZE:,} flows\n")
+
+    held_out = load_held_out()
 
     feature_columns = read_feature_columns(INPUT_CSV)
 
@@ -250,18 +360,22 @@ def main():
         f"(2 targets + {len(DROP_COLUMNS) - 2} metadata)\n"
     )
 
-    total_rows, eligible_total = count_eligible(INPUT_CSV, feature_columns)
+    total_rows, eligible_total = count_eligible(
+        INPUT_CSV, feature_columns, held_out
+    )
 
     excluded = total_rows - eligible_total
 
     print(f"\nDataset rows : {total_rows:,}")
     print(
         f"Excluded     : {excluded:,} "
-        f"({excluded / total_rows:.2%}) -- non-finite feature values"
+        f"({excluded / total_rows:.2%}) -- not held out, or non-finite"
     )
-    print(f"Eligible     : {eligible_total:,}\n")
+    print(f"Sampling pool: {eligible_total:,}\n")
 
-    df = select_rows(INPUT_CSV, feature_columns, eligible_total)
+    df = select_rows(
+        INPUT_CSV, feature_columns, eligible_total, held_out
+    )
 
     benign = 0
     attack = 0
@@ -273,7 +387,9 @@ def main():
 
         for seq, (_, row) in enumerate(df.iterrows(), start=1):
 
-            record = build_record(row, seq, feature_columns)
+            record = build_record(
+                row, seq, feature_columns, STREAM_VERSION
+            )
 
             validate_record(record, feature_columns, seq)
 

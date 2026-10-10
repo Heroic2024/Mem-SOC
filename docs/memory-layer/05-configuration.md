@@ -78,7 +78,7 @@ Embeddings must be reproducible across runs on the same machine.
 Persistent, on-disk, from day one ([`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §4 Layer 3; [`CLAUDE.md`](../../CLAUDE.md) Code & Repo Rules — *persistent/on-disk mode for the vector store, always; never in-memory*). No `EphemeralClient`, not even for tests that assert persistence behaviour.
 
 ```python
-client = chromadb.PersistentClient(path=f"data/memory/{run_id}")
+client = chromadb.PersistentClient(path=f"artifacts/memory/{run_id}")
 ```
 
 **Run-scoped path.** A shared global path lets one run's state leak into the next, which breaks the identical-sequence guarantee, and it is what forces destructive resets. Each run owns its directory; the directory *is* the run's memory artifact and can be archived with the results. See [01 §Store lifecycle](./01-architecture.md#store-lifecycle-and-reproducibility).
@@ -116,7 +116,7 @@ One object, one source of truth, serialized into every run manifest:
 memory:
   enabled: true                      # false ⇒ NullMemoryLayer ⇒ Arm A
   store:
-    path: data/memory/{run_id}
+    path: artifacts/memory/{run_id}
     collection: soc_cases
     distance: cosine
     initial_state: empty             # or seeded:<snapshot-id>
@@ -155,7 +155,7 @@ Note what is **absent**: there is no wipe, no drop, and no regenerate. The case 
 
 | Operation | Purpose |
 |---|---|
-| `create(run_id)` | Create `data/memory/<run_id>/` and its collection. **Aborts if the directory already exists** — never overwrites, merges, or clears. |
+| `create(run_id)` | Create `artifacts/memory/<run_id>/` and its collection. **Aborts if the directory already exists** — never overwrites, merges, or clears. |
 | `snapshot(tag)` | Copy a run's store directory to `data/snapshots/<tag>/`, recording run ID, sequence position, and case count. Read-only thereafter. |
 | `seed(run_id, tag)` | Copy a snapshot *into* a new run directory before the run starts. Sets `initial_state: seeded:<tag>`. |
 | `inspect(run_id)` | Report count, `schema_version`, verdict distribution, detector-label distribution, date range. First stop when results look wrong. |

@@ -126,6 +126,15 @@ ARTIFACTS_DIR = _env("MEMSOC_ARTIFACTS_DIR", os.path.join(ROOT, "artifacts"))
 GENERATED_LOGS = os.path.join(ARTIFACTS_DIR, "generated_logs.jsonl")
 GROUND_TRUTH = os.path.join(ARTIFACTS_DIR, "ground_truth.csv")
 
+# The rows the frozen detector never trained on, as raw CSV row numbers, plus
+# the manifest recording how they were derived and whether the derivation
+# reproduced the published model fingerprint. Written by
+# detection/training/heldout_split.py; read by the log generator so a replayed
+# stream can be restricted to genuinely unseen flows. Distinct from
+# STREAM_INDEX below, which is a replay cursor and means something else.
+HELD_OUT_ROWS = os.path.join(ARTIFACTS_DIR, "heldout_rows.npy")
+HELD_OUT_MANIFEST = os.path.join(ARTIFACTS_DIR, "heldout_manifest.json")
+
 STREAM_INDEX = os.path.join(ARTIFACTS_DIR, "stream_index.npy")
 STREAM_STATE = os.path.join(ARTIFACTS_DIR, "stream_state.json")
 STREAM_LOG = os.path.join(ARTIFACTS_DIR, "stream_log.jsonl")
@@ -152,6 +161,40 @@ SAMPLE_MANIFEST = os.path.join(MODEL_OUTPUTS_DIR, "sample_manifest.json")
 # Running count of API requests made today, so a run stops before the
 # provider's daily cap rather than discovering it mid-experiment.
 REQUEST_BUDGET = os.path.join(MODEL_OUTPUTS_DIR, "request_budget.json")
+
+# Layer 3, the memory layer: the on-disk ChromaDB store. Run-scoped, because
+# a scored run must not inherit another run's cases -- carrying memory across
+# runs makes run 2 a continuation rather than a repeat, which destroys both
+# the variance range and the paired test (decisions.md C6/C7).
+#
+# The memory-layer docs previously specified data/memory/<run_id>/ in 13
+# places. That was wrong -- the store is runtime output, CLAUDE.md requires
+# all runtime output under artifacts/, and data/ is the gitignored dataset
+# mount. The docs were corrected to match this in the same change (BL-101).
+#
+# A fresh store is a NEW DIRECTORY, never a cleared one. Nothing here deletes
+# a store: the case store is a protected component.
+MEMORY_STORE_DIR = _env(
+    "MEMSOC_MEMORY_STORE_DIR", os.path.join(ARTIFACTS_DIR, "memory")
+)
+
+
+def memory_store(run_id):
+    """
+    The ChromaDB directory for one run.
+
+    run_id is required and not defaulted. A default would let two runs
+    share a store by accident, which is the one failure mode in this layer
+    that produces plausible-looking results rather than an error.
+    """
+
+    if not run_id:
+        raise ValueError(
+            "run_id is required: a memory store is always scoped to one run"
+        )
+
+    return os.path.join(MEMORY_STORE_DIR, str(run_id))
+
 
 # Generated security reports, served read-only by the report API.
 REPORTS_DIR = _env("MEMSOC_REPORTS_DIR", os.path.join(ARTIFACTS_DIR, "reports"))
@@ -211,6 +254,9 @@ def describe() -> str:
         ("FEATURE_ENGINEERING", FEATURE_ENGINEERING, True),
         ("ARTIFACTS_DIR", ARTIFACTS_DIR, False),
         ("GENERATED_LOGS", GENERATED_LOGS, False),
+        ("HELD_OUT_ROWS", HELD_OUT_ROWS, True),
+        ("HELD_OUT_MANIFEST", HELD_OUT_MANIFEST, True),
+        ("MEMORY_STORE_DIR", MEMORY_STORE_DIR, False),
         ("MODEL_OUTPUTS_DIR", MODEL_OUTPUTS_DIR, False),
         ("TRIAGE_VERDICTS", TRIAGE_VERDICTS, False),
         ("REPORTS_DIR", REPORTS_DIR, False),

@@ -49,7 +49,7 @@ It is also the single most safety-critical component in this layer: **[Invariant
 | Disk | ~50–100 MB per 10k cases | 384 floats ≈ 1.5 KB/vector + HNSW index + SQLite metadata. Negligible. |
 | RAM | Low tens of MB at our scale | Chroma is memory-resident ([R8](../docs/memory-layer/06-risks-and-limitations.md#r8--chromadb-scaling-characteristics)); irrelevant below ~10⁵ vectors |
 | HNSW params | **defaults** | Tuning them makes retrieval quality a second variable |
-| Store path | `data/memory/<run_id>/` | Run-scoped. Never shared, never cleared — a fresh store is a *new directory* |
+| Store path | `artifacts/memory/<run_id>/` | Run-scoped. Never shared, never cleared — a fresh store is a *new directory* |
 
 ### Two environment risks worth knowing before you install
 

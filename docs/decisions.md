@@ -7,7 +7,7 @@ answered. Four are already answered; those come first so nobody re-opens them.
 Then write the answer and the date into this file. A decision made in a
 conversation and not written here is not a decision.
 
-**Last updated:** 2026-10-02
+**Last updated:** 2026-10-10
 
 ---
 
@@ -26,24 +26,51 @@ conversation and not written here is not a decision.
 
 ## Numbers you need
 
-All measured, not estimated. All from the current stream, which has the problem
-described in **A1** below.
+All measured, not estimated. All from the **held-out stream** (`stream_version 2`,
+rebuilt 2026-10-10), which no longer has the problem described in **A1**.
 
-- The detector flagged **211** flows out of 5,000. Of those, **210 were real attacks, 1 was a false alarm, and it missed nothing.**
-- It named the attack type correctly for **187 of 211**. So **24 were the wrong type.**
-- **82% of that stream was data the detector had already been trained on** — including 173 of the 211 alerts. The three figures above are therefore flattering.
-- **470,122** rows of the dataset were never used for training and are untouched.
+- The detector flagged **215** flows out of 25,000. Of those, **215 were real attacks, 0 were false alarms, and it missed nothing.**
+- It named the attack type correctly for **164 of 215**. So **51 were the wrong type.**
+- **The false-alarm rate is zero, and that is structural rather than a sample-size problem.** Of 24,785 harmless flows, the closest one to being flagged scored 0.0001 against a 0.50 threshold, and 99.98% scored 0.0000. Nothing at all sits between 0.01 and 0.50. Streaming 15× more flows would still give about zero, so **more logs cannot create false alarms.** See **B1**.
+- **Of the 215 real attacks, 121 are families that warrant waking an analyst and 94 are routine scanning noise.** Escalating everything is therefore only **56.3%** precise, leaving **94 unnecessary escalations** to remove — the largest piece of headroom in the project. This is the new headline measure; see **B1**.
+- **395,138** rows of the dataset were never used for training. The usable pool, after the rows the detector cannot score are removed, is **385,277** rows holding **3,713** attacks.
+- The old figures (211 alerts of 5,000, 187 of 210 correct, 1 false alarm) came from a stream that was **82% training data** — 173 of its 211 alerts. They are superseded, and kept only to show what the contamination was worth: attack-type accuracy fell **12.8 points** once it was removed.
 - Pilot run of 40 alerts, 2026-08-30: the LLM agreed with the true labels on **12**, and called **28 real attacks harmless.** That run cannot be reproduced.
-- Sandbox test on the 211 alerts: the most similar past alert had the right attack type **64%** of the time. Random guessing gets 29%. The detector gets 89%. **On the 24 the detector got wrong, it was 21% — no better than guessing.**
+- Sandbox test on the 211 alerts: the most similar past alert had the right attack type **64%** of the time. Random guessing gets 29%. The detector gets 89%. **On the 23 the detector got wrong, it was 21% — no better than guessing.** (23, not 24: one of the 211 was a false alarm with no true attack type to name. Also measured on the contaminated stream, so it needs redoing — held out there are **51** to retrieve against.)
 - The draft description format for a stored alert was **too long for the embedding model**: 179 of 211 were silently cut short. A shorter format of the same information fits with room to spare.
 
 ---
 
 ## Do these three things next
 
-1. Back up `artifacts/generated_logs.jsonl`, `artifacts/ground_truth.csv` and `artifacts/model_outputs/live_results.jsonl`. They are a matched set and the generator overwrites them without warning.
-2. Rebuild the stream from the 470,122 untrained-on rows, re-run the detector, and re-measure the three figures above. **This costs nothing** — no LLM calls.
-3. Answer **B1** using those new numbers. Everything else in Part B follows from it.
+Steps 1–3 are **done, 2026-10-10.** The backup is at `artifacts/backup-20261010/`
+with checksums; the stream was rebuilt from verified held-out rows only; the
+detector was re-run and re-measured; **B1 is answered below.**
+
+**These three run in parallel. None of them waits on another.** An earlier
+revision of this list was numbered in a way that implied the memory layer came
+last; it does not, and that reading cost time.
+
+**A — Build the memory layer. Start now; nothing blocks it.** It does not exist
+— zero lines — it is the research variable, and it is the longest remaining job,
+so it sets the critical path. It needs no LLM calls and no sign-off: every design
+question it depends on is answered in Part C, the specs are written in
+`docs/memory-layer/`, and it is built and tested offline against the 215 alerts
+that already exist. The `priority` field in **A1** below does not gate it either —
+the embedding text is the alert only (**C1**), so a verdict field is one more
+metadata key, not a dependency. Tracked as **BL-002**.
+
+**B — Record the real rate limits** for the chosen provider: requests/minute,
+requests/day, tokens/day, read off the dashboard rather than the documentation.
+This gates *running* the scored comparison, not building any of it. It is the
+only thing still deciding whether the planned run fits. Tracked as **BL-098**,
+**BL-099**, **E1**.
+
+**C — Approve the two sign-offs B1 needs**: the `priority` field in the verdict
+JSON (**BL-106**) and the escalation tier split (**BL-105**). These gate the
+prompt template and the scorer — Workstream 3 — and the prompt is a protected
+component, so nobody may edit it until the first is signed off. Neither touches
+Layer 3.
 
 ---
 
@@ -66,8 +93,15 @@ Consequence: the current 211 alerts, the 75-alert sample, the 40 pilot verdicts
 and the sandbox retrieval numbers were all computed on mixed data and have to be
 redone. Backed up first, not deleted.
 
-Tracked as BL-025. Blocked by BL-022 (the generator destroys its own output
-files on each run).
+Tracked as BL-025 — **done 2026-10-10.** The train/test split had never been
+saved and had to be recovered first; the recovery was proved by reproducing the
+detector's published fingerprint exactly, including all nine per-class scores and
+an order-sensitive 72-of-100 check (**BL-028**). The stream now draws only from
+verified held-out rows, and every record carries the dataset row it came from, so
+the claim is checkable after the fact. The detector was not retrained.
+
+**BL-022** is still open: the generator still overwrites its own output files with
+no warning. Back up before regenerating.
 
 ### A2. Do we build the memory layer and run the comparison, or write up the baseline only?
 
@@ -132,14 +166,76 @@ measure, but there is exactly **one** false alarm in 211 alerts — so there is
 almost nothing for memory to improve. Attack-type accuracy has 24 wrong answers,
 so there is something to improve.
 
+*(Those two figures came from the contaminated stream and are superseded: held
+out, it is **zero** false alarms and **51** wrong attack types. The answer below
+is the one to read.)*
+
 **Recommendation:** decide this **after** step 2 in *Do these three things next*.
 On untrained-on data the detector will make more mistakes of both kinds, and the
 original measure may become usable again. Deciding before that measurement means
 guessing.
 
-**Status:** blocked on a free measurement. Tracked as BL-012.
+**Status:** **answered 2026-10-10.** Tracked as BL-012, and as BL-105 for the
+two sign-offs the answer needs.
 
 **Answer**: try with the other untrained-on data and see how many FPs we get. If we get satisfactory number of FPs, we will go ahead with the testing of the vector database. 
+
+**Answered 2026-10-10 — the headline is the unnecessary-escalation rate.**
+
+The measurement came back and the answer is **zero** false alarms, not a
+satisfactory number. Going ahead with the vector database is still right, but
+false-alarm *volume* cannot be the headline, for a reason stronger than the count:
+
+- **It is structurally zero, not merely small.** Of 24,785 harmless flows, the nearest one to being flagged scored 0.0001 against a 0.50 threshold, and 99.98% scored 0.0000. There is no near-miss population to draw from, so a bigger sample cannot produce false alarms. The free-measurement route is exhausted.
+- **The memory layer could not fix them anyway.** Retrieval happens in the triage layer, *after* the detector has already decided. Even with hundreds of false alarms, memory has no mechanism by which it could remove one. This is an architectural fact, and it was true before any measurement.
+
+So the brief's Objective 1 was never measurable where we were pointing it. It is
+measurable one layer up, which is also what the phrase means in ordinary SOC
+language: **a false positive is an alert that reached a human who did not need to
+see it.**
+
+**The headline number is the unnecessary-escalation rate.** Of the 215 held-out
+alerts, **121** are families that warrant waking an analyst (Worms, Backdoor,
+Shellcode, Exploits, DoS, Generic) and **94** are routine scanning and probing
+noise (Reconnaissance, Analysis, Fuzzers). A system that escalates every alert is
+therefore **56.3%** precise (95% CI [49.6%, 62.7%]), leaving **94** unnecessary
+escalations on the table. Arm B should remove more of them than Arm A by
+recognising precedent — *we have seen twenty of these scans and none mattered* —
+without losing any of the 121 that do matter. Both halves get reported:
+escalation precision **and** recall on the must-escalate tier, because a system
+that escalates nothing would otherwise score perfectly.
+
+That is 94 units of headroom against the 51 the attack-type measure has, it is the
+largest in the project, and it serves the objective already submitted to the
+mentors.
+
+**Attack-type accuracy stays as the second reported number** (51 errors, already
+measured, needs no changes anywhere). Do not drop it — it is the fallback if the
+escalation result comes out flat.
+
+**Two things this costs, both needing sign-off before any code moves:**
+
+1. **One new field in the verdict JSON.** The LLM currently answers
+   `true_positive | false_positive | inconclusive`, which cannot express *this is
+   a real attack but not worth escalating* — and on this stream every
+   `false_positive` answer is simply wrong, because all 215 alerts are genuine.
+   The metric needs the LLM to state a `priority` of its own. **The prompt
+   template is a protected component** (`CLAUDE.md`), so this must be approved
+   explicitly, applied identically to both arms in one commit, and versioned so
+   that verdicts written under the old wording can never be mixed with the new.
+   It also invalidates the 40 pilot verdicts, which **D3** already discards as
+   non-reproducible, so nothing further is lost.
+2. **The tier split above must be declared, not assumed.** The six/three grouping
+   is based on what the attack families *do* — code execution and denial of
+   service on one side, scanning and fuzzing on the other. It is defensible, but
+   it is a research judgement and it decides the headline number. Confirm it, or
+   change it, in writing. Whatever is chosen must be fixed before any scored run
+   and reported in the paper as a stated assumption, with the per-class counts
+   beside it. Tracked as **BL-105**.
+
+**What this does not change:** the detector, its thresholds, the stream, the seed,
+or the two-arm design. The detector's 0 false alarms and 100% recall remain a
+reportable result — they are simply not the result memory is being tested on.
 
 ### B2. Do harmless flows get sent to the LLM as well?
 
@@ -156,9 +252,24 @@ mentor's review raises this twice.
 **Recommendation:** yes, include them — but set the number after B1, since B1
 decides how much it matters.
 
-**Status:** open. Tracked as BL-016.
+**Status:** **re-scoped 2026-10-10**, still open on sample size. Tracked as BL-016.
 
 **Answer**: let us try this as well to create a confusion matrix for understanding. 
+
+**Re-scoped 2026-10-10.** The original reason for this no longer holds: the
+detector produces **zero** false alarms on held-out data, so there are none to
+feed into triage, and a *detector* confusion matrix would have nothing to put in
+two of its four cells.
+
+One reason survives, and it is now the only one: sending harmless flows lets us
+measure whether **the LLM itself** over-escalates on traffic no model flagged.
+That is a different quantity from the detector's, it is a direct check on the
+**B1** headline, and it is the honest answer to the mentor's point that "caught
+100% of attacks" means little when only attacks were ever shown.
+
+Keep it, at a sample sized once the rate limits are known, and label it in the
+paper as the **LLM** false-positive rate — never the detector's. Tracked as
+**BL-016**.
 
 ### B3. How many alerts do we triage, and how many times do we repeat each run?
 
@@ -372,12 +483,21 @@ Ans: yes this has to be there---
 **Why it matters:** the review asks for them explicitly and the current draft has
 none.
 
-**Recommendation**, taken from the review:
-1. Does memory improve how often the attack type is named correctly?
-2. Does it reduce repeated mistakes on alerts that look alike?
-3. What does it cost to store the LLM's own unchecked conclusions instead of confirmed ones? *(This is what A3 sets up.)*
+**Answered 2026-10-10**, re-ordered to match the **B1** decision. Question 1 is
+now the headline, and it carries the objective already submitted to the mentors:
 
-**Status:** open. Tracked as BL-020.
+1. **Does memory reduce unnecessary escalations without missing real threats?** Measured as escalation precision together with must-escalate recall, over the 215 held-out alerts, against the tier split declared in **B1**. 94 units of headroom.
+2. **Does memory improve how often the attack type is named correctly?** 51 units of headroom, and the no-memory figure is already measured.
+3. **Does memory reduce repeated mistakes on alerts that look alike?** Consistency across near-duplicate alerts.
+4. **What does it cost to store the LLM's own unchecked conclusions instead of confirmed ones?** *(This is what A3 sets up.)* Drop this one first if time runs short — and remove it from the paper rather than leaving it claimed and unmeasured.
+
+A null or negative result on any of these is a valid outcome and is reported as
+one. Note that the sandbox retrieval test already found nearest-neighbour
+retrieval **worse than random** on exactly the alerts the detector got wrong, so a
+null result on Arm B is a live possibility and the paper should be built to
+survive it.
+
+**Status:** answered. Tracked as BL-020.
 
 ### D2. Does the report-writing pipeline stay in the paper?
 

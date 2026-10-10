@@ -167,7 +167,7 @@ collection.add(
 )
 ```
 
-...plus one line appended to `data/memory/<run_id>/cases.jsonl` holding the heavy stuff: full untruncated rationale, both report views, the complete feature vector as ingested, every retrieval candidate with its distance, token counts, latency.
+...plus one line appended to `artifacts/memory/<run_id>/cases.jsonl` holding the heavy stuff: full untruncated rationale, both report views, the complete feature vector as ingested, every retrieval candidate with its distance, token counts, latency.
 
 **Why pass embeddings in rather than letting Chroma compute them?** Because then the shared-model rule is visible in the code instead of hidden in collection config. (`docs/memory-layer/03-write-path.md:38`)
 
@@ -192,7 +192,7 @@ Under the hood Chroma inserts the vector into an HNSW index (cosine space, expli
 ## Where it all lands
 
 ```
-data/memory/r7f3a1/
+artifacts/memory/r7f3a1/
 ├── chroma.sqlite3          ← vectors, documents, metadata (Chroma's own files)
 ├── <uuid>/                 ← the HNSW index
 ├── cases.jsonl             ← sidecar: the bulky stuff
