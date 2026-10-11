@@ -463,7 +463,7 @@ That is 14 flow keys on top of the ~17 in the table above: roughly **31 metadata
 
 ## 7. Sidecar record
 
-`data/memory/<run_id>/cases.jsonl`, keyed by `case_id`. Holds the full untruncated rationale, both report views, **the complete flow feature vector as ingested**, the full `shap_explanation` array, all retrieval candidates with distances, and raw LLM token/latency metadata.
+`artifacts/memory/<run_id>/cases.jsonl`, keyed by `case_id`. Holds the full untruncated rationale, both report views, **the complete flow feature vector as ingested**, the full `shap_explanation` array, all retrieval candidates with distances, and raw LLM token/latency metadata.
 
 "Complete flow feature vector" now means something precise: **all 48 features of [§2b](#2b-the-feature-universe--verified), under their exact CSV column names, unrounded, unscaled, in CSV column order**, plus the five dropped columns where recoverable. This is what makes a stored case reconstructible and the run auditable; nothing here is selected or filtered. `inf` values serialize as the string `"inf"` (see rendering rule 1).
 

@@ -178,7 +178,7 @@ There is **no `ground_truth` key** in this schema. Ground-truth labels are the e
 
 ## Part 3 — Sidecar record
 
-Written to `data/memory/<run_id>/cases.jsonl`, keyed by `case_id`. Not in Chroma.
+Written to `artifacts/memory/<run_id>/cases.jsonl`, keyed by `case_id`. Not in Chroma.
 
 Holds: the full untruncated rationale, both the technical and non-technical report views, the complete feature vector as ingested, the full retrieval result that informed the verdict (all candidates with distances, not just survivors), and raw LLM response metadata (token counts, latency).
 

@@ -58,10 +58,10 @@ Never `EphemeralClient`, not even for a throwaway test — persistent, on-disk, 
 import chromadb
 
 run_id = "smoketest-0001"   # a real run_id scheme comes later; anything unique is fine here
-client = chromadb.PersistentClient(path=f"data/memory/{run_id}")
+client = chromadb.PersistentClient(path=f"artifacts/memory/{run_id}")
 ```
 
-Each run gets its **own directory** — never a shared global path. If `data/memory/<run_id>/` already exists, that's a collision; the correct response is to pick a new `run_id`, not to reuse or clear the old one ([01 §Store lifecycle](docs/memory-layer/01-architecture.md#store-lifecycle-and-reproducibility)). There is no `reset()` operation in this design — a fresh store is a fresh directory, not a wiped one.
+Each run gets its **own directory** — never a shared global path. If `artifacts/memory/<run_id>/` already exists, that's a collision; the correct response is to pick a new `run_id`, not to reuse or clear the old one ([01 §Store lifecycle](docs/memory-layer/01-architecture.md#store-lifecycle-and-reproducibility)). There is no `reset()` operation in this design — a fresh store is a fresh directory, not a wiped one.
 
 ---
 
@@ -156,7 +156,7 @@ collection.delete(ids=["smoke-0001"])   # this was a smoke test, not real memory
 
 A similar, related-looking alert should come back with a high similarity (roughly 0.8+, though don't over-index on the exact number from two hand-written strings). If it comes back near zero or negative, something upstream is wrong — most likely the distance space.
 
-Delete the probe/smoke-test directory afterward too (`data/memory/smoketest-0001/`) — it isn't a real run and has no reason to persist:
+Delete the probe/smoke-test directory afterward too (`artifacts/memory/smoketest-0001/`) — it isn't a real run and has no reason to persist:
 
 ```bash
 rmdir /s /q data\memory\smoketest-0001

@@ -1,0 +1,77 @@
+# Layer 3 — the memory layer. THE research variable.
+#
+# This file exists because the memory layer must NOT be installed into the
+# environment that runs the detector. `sentence-transformers` pulls `torch`,
+# and letting pip re-resolve `numpy`/`scipy` alongside LightGBM can shift the
+# detector's numerics. Detector weights and thresholds are a protected
+# component (CLAUDE.md); a dependency bump is a silent way to break that
+# freeze. docs/memory-layer/09-setup-plan.md §2 risk B says the same.
+#
+# So this is deliberately a SEPARATE virtualenv, not another line in
+# requirements/triage.txt. It also stays out of requirements/triage.txt
+# because that file feeds deploy/report.Dockerfile, which is declared an
+# HTTP-client-only image (requirements/triage.txt:4-5) — adding ~2 GB of
+# torch to the service that holds the LLM credentials is not a free change.
+#
+# Install location: OUTSIDE the repository, because .gitignore covers
+# `venv/` and `.venv/` only, so an in-repo `.venv-memory/` would commit
+# ~2 GB of torch wheels -- and CLAUDE.md forbids editing .gitignore as a
+# side effect of a feature task. See BL-107 for the clean fix.
+#
+# Windows (adjust <HOME> to your own user directory):
+#   python -m venv "<HOME>/.venvs/memsoc-memory"
+#   "<HOME>/.venvs/memsoc-memory/Scripts/python" -m pip install -r requirements/memory.txt
+#
+# Linux / macOS:
+#   python -m venv ~/.venvs/memsoc-memory
+#   ~/.venvs/memsoc-memory/bin/pip install -r requirements/memory.txt
+#
+# Verify the install before building against it. The four invariants that
+# matter here all fail SILENTLY rather than raising, so check them:
+#   - same text embeds to a bit-identical vector twice
+#   - the collection's distance space is cosine, asserted on the distances
+#     (self = 0, opposite = 2) and not on the metadata string
+#   - the store survives being closed and reopened
+#   - over-long input truncates instead of erroring (see BL-013)
+#
+# ---------------------------------------------------------------------
+# Dependencies, with the lighter alternative rejected for each
+# ---------------------------------------------------------------------
+#
+# chromadb — the vector store. Settled in PROJECT_BRIEF.md §6.
+#   Rejected: raw SQLite plus a hand-written cosine scan. It would avoid
+#   the dependency entirely and at 215 cases would even be fast enough,
+#   but persistence, metadata filtering and the collection abstraction
+#   would all become ours to maintain and test, and the brief names
+#   Chroma. Must be PersistentClient on disk, cosine space set
+#   explicitly — the default is L2 and nothing errors if you forget.
+chromadb==1.5.9
+
+# sentence-transformers — produces the embeddings. Needed for
+#   all-MiniLM-L6-v2 (C2) and, just as importantly, for its real
+#   tokenizer: case_ranker/token_estimator.py:30-41 is a heuristic, and
+#   the 256-token limit truncates SILENTLY (179 of 211 cases were cut
+#   short in sandbox testing, and a 313-token case embedded identically
+#   to its first 256 tokens).
+#   Rejected: calling an embedding API over HTTP, which would avoid the
+#   ~2 GB install. Refused because the embedding model is a protected
+#   component that must be byte-identical on the write and read paths
+#   forever; a remote model can be updated underneath us without notice
+#   and would invalidate every stored vector silently.
+#   Rejected: letting Chroma call its own embedding function. The project
+#   computes embeddings outside Chroma on purpose, so the one-model
+#   invariant is visible in code rather than buried in collection config
+#   (docs/memory-layer/03-write-path.md).
+sentence-transformers==6.1.0
+
+# torch arrives as a sentence-transformers dependency. Not pinned here:
+# the CPU wheel is what pip installs by default on Windows, and pinning a
+# torch version across platforms causes more breakage than it prevents.
+# device="cpu" is pinned in code instead — CPU and GPU produce slightly
+# different floats, which would move borderline cases across the
+# similarity threshold between runs.
+#
+# After installing, record the resolved transitive set:
+#   pip freeze > artifacts/memory-env-freeze.txt
+# Every run must be reproducible (CLAUDE.md), and this file pins only the
+# two direct dependencies.
