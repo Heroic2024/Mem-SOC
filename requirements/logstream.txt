@@ -1,0 +1,10 @@
+# Runtime dependencies for the MemSOC log-generation container.
+#
+# Deliberately smaller than detection.txt: this
+# container runs run_pipeline.py --no-api, which only POSTs to the
+# `detection` service over HTTP -- it never loads a model itself, so it
+# needs none of lightgbm/shap/fastapi/uvicorn/pydantic.
+
+pandas==2.2.3
+numpy==2.2.6
+requests==2.32.3

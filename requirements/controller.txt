@@ -1,0 +1,9 @@
+# Runtime dependencies for the MemSOC interactive controller.
+#
+# The controller shells out to the log generator (pandas/numpy), to live
+# capture and to report generation (requests). It never loads a model, so
+# lightgbm/scikit-learn/shap are absent.
+
+pandas==2.2.3
+numpy==2.2.6
+requests==2.32.3
