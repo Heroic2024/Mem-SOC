@@ -142,9 +142,9 @@ The store is stateful, and that state is an *output* of a run as much as the ver
 
 A run does not clear a store — it **creates a new one**.
 
-- Every run persists to its own directory, `data/memory/<run_id>/`. A `run_id` is unique per run.
+- Every run persists to its own directory, `artifacts/memory/<run_id>/`. A `run_id` is unique per run.
 - A fresh directory *is* an empty store. No deletion is involved, so the invariant holds by construction rather than by discipline.
-- If `data/memory/<run_id>/` already exists, the run **aborts**. It does not overwrite, merge, or clear. A colliding `run_id` is an operator error, and the safe response is to stop.
+- If `artifacts/memory/<run_id>/` already exists, the run **aborts**. It does not overwrite, merge, or clear. A colliding `run_id` is an operator error, and the safe response is to stop.
 - Old run stores accumulate on disk. **Removing them is a human decision, made explicitly** — never an automated step, never a side effect of starting a run.
 
 This is a better design than reset-on-start regardless of the rule: every run's memory is a durable, inspectable artifact that can be archived with its results, and no run can destroy the evidence of another.

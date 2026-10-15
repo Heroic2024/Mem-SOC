@@ -2,19 +2,19 @@
 
 > [`CLAUDE.md`](../../CLAUDE.md): *"Surface ambiguity; do not resolve it silently. Guessing on a settled-looking question is worse than pausing."* and *"Never invent dataset fields, metric definitions, or schema entries. If something is undefined, ask."*
 >
-> Each question below has a recommendation, but **none is decided.** Every one changes what Phase 2 builds. Record the decision and its rationale in this file when made; a decision that lives only in a conversation is not a decision.
+> Each question below has a recommendation. **OQ-2 is decided** (2026-10-01); the rest are open. Every one changes what Phase 2 builds. Record the decision and its rationale in this file when made; a decision that lives only in a conversation is not a decision.
 
-| ID | Question | Blocks | Recommendation |
-|---|---|---|---|
-| [OQ-1](#oq-1--does-the-embedded-text-include-the-verdict) | Does the embedded text include the verdict? | Phase 0 schema lock | Alert-only (symmetric) |
-| [OQ-2](#oq-2--does-ground-truth-feed-the-memory-store) | Does ground truth feed the memory store? | Phase 2 write path | No — oracle only |
-| [OQ-3](#oq-3--where-does-attack_category-come-from) | Where does `attack_category` come from? | Phase 0 schema lock | LLM output |
-| [OQ-4](#oq-4--where-does-a-cold-start-seed-set-come-from) | Where does a cold-start seed set come from? | Phase 3 | No seed; report phases separately |
-| [OQ-5](#oq-5--what-is-the-phase-2-default-write-policy) | Phase 2 default write policy? | Phase 2 | `write_all` |
-| [OQ-6](#oq-6--how-many-arm-b-runs-and-how-are-they-aggregated) | How many Arm B runs, aggregated how? | Phase 4 | ≥3 LLM seeds, report spread |
-| [OQ-7](#oq-7--does-memory-persist-across-runs) | Does memory persist across runs? | Phase 2 | No — run-scoped |
-| [OQ-8](#oq-8--which-embedding-model-is-locked-for-phase-2) | Which embedding model is locked? | Phase 2 | MiniLM if measurement supports it |
-| [OQ-9](#oq-9--what-does-layer-2-emit) | What does Layer 2 emit? | Phase 0 schema lock | — team decision required |
+| ID | Question | Blocks | Recommendation | Status |
+|---|---|---|---|---|
+| [OQ-1](#oq-1--does-the-embedded-text-include-the-verdict) | Does the embedded text include the verdict? | Phase 0 schema lock | Alert-only (symmetric) | open |
+| [OQ-2](#oq-2--does-ground-truth-feed-the-memory-store) | Does ground truth feed the memory store? | Phase 2 write path | No — oracle only | **decided 2026-10-01** |
+| [OQ-3](#oq-3--where-does-attack_category-come-from) | Where does `attack_category` come from? | Phase 0 schema lock | LLM output | open |
+| [OQ-4](#oq-4--where-does-a-cold-start-seed-set-come-from) | Where does a cold-start seed set come from? | Phase 3 | No seed; report phases separately | open |
+| [OQ-5](#oq-5--what-is-the-phase-2-default-write-policy) | Phase 2 default write policy? | Phase 2 | `write_all` | open |
+| [OQ-6](#oq-6--how-many-arm-b-runs-and-how-are-they-aggregated) | How many Arm B runs, aggregated how? | Phase 4 | ≥3 LLM seeds, report spread | open — paired test settled, see BL-017 |
+| [OQ-7](#oq-7--does-memory-persist-across-runs) | Does memory persist across runs? | Phase 2 | No — run-scoped | open |
+| [OQ-8](#oq-8--which-embedding-model-is-locked-for-phase-2) | Which embedding model is locked? | Phase 2 | MiniLM if measurement supports it | open — **measurement taken**, see below |
+| [OQ-9](#oq-9--what-does-layer-2-emit) | What does Layer 2 emit? | Phase 0 schema lock | — team decision required | open — premise stale, see below |
 
 ---
 
@@ -61,9 +61,7 @@ An incoming alert has no verdict — it has not been triaged yet. So the write p
 
 ## OQ-2 — Does ground truth feed the memory store?
 
-**Status: open, and explicitly reserved.** [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §5 asks for this decision and instructs that it not be silently made. [`CLAUDE.md`](../../CLAUDE.md) goes further: *"The ground-truth handling question in `PROJECT_BRIEF.md` §5 is open. Do not implement either interpretation without confirmation."*
-
-**Neither option below may be built until the team confirms one.**
+**Status: decided 2026-10-01.** See [Decision](#decision--2026-10-01) at the end of this section. [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §5 asked for this decision and instructed that it not be silently made; [`CLAUDE.md`](../../CLAUDE.md) went further: *"The ground-truth handling question in `PROJECT_BRIEF.md` §5 is open. Do not implement either interpretation without confirmation."* The options and their reasoning are kept below because the rejected ones are part of the methodology.
 
 ### The tension
 
@@ -97,6 +95,27 @@ An incoming alert has no verdict — it has not been triaged yet. So the write p
 **(a) for the primary result.** It is the only option under which the headline comparison measures what the project claims to measure. (c) is a legitimate follow-up if time allows, provided it is never presented as the main result. (b) should be ruled out explicitly and the reasoning recorded, so it does not resurface later as an apparently reasonable idea.
 
 **Downstream dependencies:** this decision determines [OQ-4](#oq-4--where-does-a-cold-start-seed-set-come-from) and the viability of the `confirmed_only` write policy ([03](./03-write-path.md#confirmed_only--store-only-externally-confirmed-verdicts)).
+
+### Decision — 2026-10-01
+
+**Chosen: (a) for the primary result, with a declared oracle-confirmed condition alongside it as an upper bound.**
+
+Memory stores the LLM's own verdicts, right or wrong. That is the condition every headline number is reported under. A second condition, identical in every other respect, stores oracle-confirmed verdicts instead; it is reported separately and is never the headline.
+
+The two are one toggle on the memory module, not two codepaths — [`CLAUDE.md`](../../CLAUDE.md) § *Experimental Integrity* applies unchanged.
+
+**Why both rather than (a) alone.** The gap between the two conditions *is* the cost of self-written feedback, measured rather than argued. [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §8 requires error propagation to be tested rather than mentioned, and (a) on its own shows only that propagation happened — it gives no ceiling to compare against, so it cannot separate a weak retriever from well-retrieved but wrong precedent.
+
+**Why not (b).** Ruled out explicitly, as the recommendation above asked. Storing the true label makes retrieval a label lookup, hands the LLM the answer, and makes error propagation untestable by construction. It is recorded here as rejected so it does not resurface later as an apparently reasonable idea.
+
+**Relation to (c).** This is close to the hybrid, but structured as a two-level factor rather than a review-rate sweep. There is no new `review_rate` parameter to justify: the conditions are "none confirmed" and "all confirmed", which bracket every intermediate rate without needing one chosen.
+
+**Prompted by** the 2026-09-30 mentor review (`docs/research-paper/Review - MemSOC -30092026.docx` §C), which raised the same hazard independently — *"with 70% of attacks misclassified, memory would preserve and amplify those errors"* — and proposed the two-condition comparison as its RQ3. Sandbox measurement supports the concern: the nearest retrieved neighbour already carries the detector's own wrong attack family 70.8% of the time, before any LLM error has been stored (BL-014).
+
+**Still open, and not settled by this decision:** [OQ-4](#oq-4--where-does-a-cold-start-seed-set-come-from). The primary condition writes no ground truth, so a ground-truth seed set remains the leak it always was; but the oracle-confirmed condition does not by itself justify a warm start either. Decide OQ-4 on its own terms.
+
+**Implementation** is tracked as BL-015. BL-001 is closed by this decision.
+
 
 ---
 
@@ -227,6 +246,22 @@ Under the **final** case template ([02](./02-case-schema.md#template--draft-pend
 
 If p99 approaches the limit, cases are silently truncated and similarity degrades unpredictably ([R5](./06-risks-and-limitations.md#r5--silent-truncation-at-the-token-limit)). The two ways out — trim the template, or choose a model with a longer sequence limit — are both cheap *before* the lock and expensive after.
 
+### Measurement taken — 2026-09-28
+
+Measured with MiniLM's own tokenizer over 211 rendered alerts, counting `[CLS]` and `[SEP]`. Full detail in `../../../memsoc-sandbox/FINDINGS.md`; tracked as BL-013.
+
+| Template | p50 | p95 | p99 | max | Truncated |
+|---|---|---|---|---|---|
+| Draft ([02](./02-case-schema.md#template--draft-pending-oq-9), 11 lines, full labels) | 260 | 268 | 273 | 278 | **179 / 211** |
+| Compact (same fields, terse labels) | 144 | — | 157 | 162 | 0 / 211 |
+
+**The draft template does not fit.** The earlier heuristic p99 of ~184 was 89 tokens low, because numbers split into several word-pieces (`16383` becomes `163` + `##83`). So the condition this question set — *lock MiniLM if and only if the measurement shows comfortable headroom* — fails for the draft template and passes comfortably for a compact rendering of the same fields.
+
+**Truncation is silent, as [R5](./06-risks-and-limitations.md#r5--silent-truncation-at-the-token-limit) warned.** A 313-token case embedded with no error or warning, and its vector was bit-identical to the vector of its first 256 tokens; rewriting every digit past the cut changed nothing. Whatever template is locked, the renderer needs a hard assertion on token count rather than trust.
+
+**What this does not settle.** Choosing between the two templates on retrieval quality would be tuning on the test set — they scored identically (P@1 0.640 both). The defensible basis for preferring the compact one is that it fits the limit. The lock itself, and its version pin, still need approval.
+
+
 ### Recommendation
 
 **Lock `all-MiniLM-L6-v2` if and only if the token measurement shows comfortable headroom.** It is the model already named in the brief, it runs locally with no API dependency, and staying with it avoids relitigating a settled-looking choice.
@@ -260,6 +295,23 @@ If the measurement shows the template does not fit, that is a decision for the t
 No recommendation — this is a Layer 2 decision and out of scope for these docs. The memory layer's ask is only that the contract be **written down and stable** before the case schema is locked, and that it include a per-alert score and a stable alert identifier.
 
 **Needed from the team:** the settled output format, recorded wherever Layer 2 is documented. Once it exists, the pending fields in [02](./02-case-schema.md) can be filled in and the schema locked.
+
+### The premise is stale — verified 2026-10-01
+
+"The detector has not been chosen" is no longer true. It is the frozen LightGBM multiclass model in `models/multiclass_lightgbm.pkl`. Four of the five questions above are answered by what it already emits, read directly from `artifacts/model_outputs/live_results.jsonl`:
+
+| Question | Answer |
+|---|---|
+| Per-alert confidence, or class only? | Both. `multiclass.confidence` per alert, plus `binary_confidence`, plus a per-alert `alert.shap_explanation`. |
+| Label vocabulary — closed and stable? | Closed, eight attack families, all observed in output: `Exploits`, `Fuzzers`, `Reconnaissance`, `DoS`, `Generic`, `Backdoor`, `Analysis`, `Shellcode`. No `Benign`, no `Worms`. |
+| Which columns survive preprocessing? | 48 of 55. Dropped: the two targets plus `IPV4_SRC_ADDR`, `IPV4_DST_ADDR`, `FLOW_START_MILLISECONDS`, `FLOW_END_MILLISECONDS`, `DNS_QUERY_ID`. Addresses are therefore absent by construction, which is what the template needs. |
+| Stable alert identifier? | Yes, `uid`, carried from generation through capture to `ground_truth.csv`. |
+| Detector version identifier? | **No — this is the remaining gap.** Nothing in `src/memsoc/detection/` or in the emitted records states which model produced an alert, so `detector_version` cannot be populated. Tracked as BL-075. |
+
+Two cautions for anyone rendering a case from these records. The record carries `src_ip` and `dst_ip` at **top level** even though the nested `alert` sub-record does not, so a renderer must select fields by explicit whitelist (BL-026). And four of the 48 features are unusable as text: `SRC_TO_DST_SECOND_BYTES` and `DST_TO_SRC_SECOND_BYTES` hold `inf` for zero-duration flows, `SRC_TO_DST_IAT_MIN` is zero in 99.9% of rows and `DST_TO_SRC_IAT_MIN` in 100%.
+
+This question stays **open** only for the one missing field and for the contract being written down where Layer 2 is documented, rather than inferred from sample output as it is here.
+
 
 ---
 

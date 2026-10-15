@@ -2,6 +2,8 @@
 
 > Addresses the Phase 0 task in [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §7: *"Define the case schema: which features become the embedded text representation vs. which become filterable metadata."*
 >
+> **Status (2026-10-13):** Part 1 (the embedding text) is settled and implemented as `schema_version 1.0` in `src/memsoc/memory/`. Parts 2 and 3 are implemented as described below, except where noted. The rest of this banner is the original proposal status, kept for history.
+>
 > **Status: proposal, not settled.** [`CLAUDE.md`](../../CLAUDE.md) forbids inventing dataset fields or schema entries. Every field below is either derived from a decision already made in [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md), or marked **pending** because it depends on a Phase 0 decision that has not been taken. Nothing here is locked until the open questions close.
 
 ---
@@ -57,7 +59,7 @@ If the team chooses otherwise, `CaseRenderer` must render a synthetic verdict pl
 
 ### Feature selection
 
-The NF-* v3 datasets carry 55 columns — 53 flow features plus `Label` and `Attack`; 48 features survive into `X` after the drops at `final_ml_model_v1/src/features/feature_engineering.py:18-26`. Embedding all of them is counterproductive:
+The NF-* v3 datasets carry 55 columns — 53 flow features plus `Label` and `Attack`; 48 features survive into `X` after the drops at `src/memsoc/detection/features/feature_engineering.py:18-26`. Embedding all of them is counterproductive:
 
 - **Token budget.** The candidate embedding model truncates at a fixed sequence length (256 word-piece tokens for `all-MiniLM-L6-v2`, the model named as a candidate in [`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §6). Dozens of labelled float values overrun it, and the model silently drops the tail — the last third of the features then contribute *nothing*, unpredictably. See [05 §Token budget](./05-configuration.md#token-budget) and [R5](./06-risks-and-limitations.md#r5--silent-truncation-at-the-token-limit).
 - **Signal dilution.** Sentence-transformer embeddings of long numeric strings compress toward each other. More numbers is not more signal.
@@ -65,23 +67,34 @@ The NF-* v3 datasets carry 55 columns — 53 flow features plus `Label` and `Att
 
 The template below covers the axes SOC analysts actually reason about: who talked to whom, volume, rate, shape, timing, and TCP flag posture. **Which of these fields actually exist is pending** the Phase 0 preprocessing decision ([OQ-9](./07-open-questions.md#oq-9--what-does-layer-2-emit)).
 
-### Template — draft, pending OQ-9
+### Template — `schema_version 1.0`, implemented
+
+**Settled 2026-10-13.** Implemented in `src/memsoc/memory/case_text.py`, and that code is authoritative. This template is alert-only text plus the detector's top-3 SHAP feature names, with raw numbers. It is the best of the four variants measured in [`retrieval-precision-investigation.md`](./retrieval-precision-investigation.md) §3.
 
 ```
-ALERT {day} {timestamp}
-{src_ip}:{src_port} -> {dst_ip}:{dst_port} {protocol_name} port {dst_port_name}
-Detector: {detector_label} score {detector_score:.2f}
-Volume: {total_fwd_packets} fwd / {total_bwd_packets} bwd pkts, {total_len_fwd} / {total_len_bwd} bytes
-Rate: {flow_packets_per_s:.0f} pkt/s, {flow_bytes_per_s:.0f} B/s over {flow_duration_ms:.0f} ms
-Size: fwd mean {fwd_pkt_len_mean:.0f} max {fwd_pkt_len_max:.0f}, bwd mean {bwd_pkt_len_mean:.0f} max {bwd_pkt_len_max:.0f}
-Timing: IAT mean {flow_iat_mean:.0f} std {flow_iat_std:.0f}, idle mean {idle_mean:.0f}
-Flags: SYN {syn} FIN {fin} RST {rst} PSH {psh} ACK {ack} URG {urg}
-Shape: down/up {down_up_ratio}, avg pkt {avg_packet_size:.0f}, init win {init_win_fwd}/{init_win_bwd}
+{protocol_name} to port {dst_port} ({dst_port_name}), L7 protocol {L7_PROTO:.1f}
+Volume: {IN_PKTS} in / {OUT_PKTS} out packets, {IN_BYTES} / {OUT_BYTES} bytes
+Duration: {FLOW_DURATION_MILLISECONDS} ms
+Throughput: {SRC_TO_DST_AVG_THROUGHPUT} src to dst, {DST_TO_SRC_AVG_THROUGHPUT} dst to src
+Packet size: shortest {SHORTEST_FLOW_PKT}, longest {LONGEST_FLOW_PKT}
+Retransmitted: {RETRANSMITTED_IN_PKTS} in / {RETRANSMITTED_OUT_PKTS} out packets
+TTL: min {MIN_TTL}, max {MAX_TTL}
+TCP flags: client {CLIENT_TCP_FLAGS as names}, server {SERVER_TCP_FLAGS as names}
+Key features: {top 3 SHAP feature names by |contribution|}
 ```
 
-Nine lines, roughly 120–160 word-piece tokens depending on value widths — inside a 256-token limit with headroom, but this must be **measured, not assumed** ([05 §Token budget](./05-configuration.md#token-budget)).
+**Measured, not assumed:** over all 215 held-out alerts, using MiniLM's own tokenizer, the text runs p50 121, p99 136, max 143 tokens against the 256 limit. `memsoc.memory.embedding.check_length()` raises on anything longer, because the model would otherwise truncate silently (BL-013). The chart is Figure 1 in `notebooks/retrieval-quality.ipynb`.
 
-Lines 1 and 2 depend entirely on identity columns surviving preprocessing. If they do not, the template degrades to seven numeric lines, and the two most human-meaningful signals — the service being talked to and the transport — are gone. Flag this to the Layer 2 decision rather than silently dropping the lines.
+**Deliberately left out of the text:**
+
+| Left out | Why |
+|---|---|
+| `Detector: {label} score {score}` | The earlier draft had this line, but it contradicted the C1 evidence, which measured it as the worst variant on the detector's own errors (investigation §4.1). |
+| IP addresses | Source IP predicts the label on this dataset. |
+| Day and timestamp | Attack families cluster in capture windows, so time leaks the label. |
+| The LLM's verdict and rationale | A new alert has none yet, so including them would break symmetry (investigation §4.3). |
+
+The verdict and rationale are still stored as metadata and shown to the LLM.
 
 ### Rendering rules
 
@@ -123,6 +136,8 @@ A dataset-native flow identifier should also be stored if one survives preproces
 ### Network context — pending OQ-9
 
 Every key here exists only if the corresponding column survives Phase 0 preprocessing.
+
+> **Implemented differently (2026-10-13):** `src_ip`, `dst_ip`, `day` and `timestamp` are **not** stored. Metadata is shown to the LLM with every retrieved case, and source IP predicts the label on this dataset. `seq` already records stream position. The stored keys are `src_port`, `dst_port`, `protocol` and `protocol_name`, plus `condition`, `label_source` and `write_policy`.
 
 | Key | Type | Filterable use |
 |---|---|---|
@@ -178,7 +193,7 @@ There is **no `ground_truth` key** in this schema. Ground-truth labels are the e
 
 ## Part 3 — Sidecar record
 
-Written to `data/memory/<run_id>/cases.jsonl`, keyed by `case_id`. Not in Chroma.
+Written to `artifacts/memory/<run_id>/cases.jsonl`, keyed by `case_id`. Not in Chroma.
 
 Holds: the full untruncated rationale, both the technical and non-technical report views, the complete feature vector as ingested, the full retrieval result that informed the verdict (all candidates with distances, not just survivors), and raw LLM response metadata (token counts, latency).
 
@@ -189,6 +204,20 @@ The sidecar is also the only safe path to a template change ([§Schema versionin
 ---
 
 ## Illustrative example
+
+> **Superseded for the embedding text (2026-10-13).** The text below is the pre-1.0 draft. A real 1.0 case text, rendered from a held-out alert, is:
+>
+> ```
+> TCP to port 21 (ftp), L7 protocol 1.0
+> Volume: 13 in / 11 out packets, 721 / 891 bytes
+> Duration: 860 ms
+> Throughput: 6699 src to dst, 8278 dst to src
+> Packet size: shortest 40, longest 145
+> Retransmitted: 5 in / 5 out packets
+> TTL: min 62, max 63
+> TCP flags: client PSH ACK, server ACK
+> Key features: CLIENT_TCP_FLAGS, MIN_TTL, DNS_QUERY_TYPE
+> ```
 
 **Values are placeholders.** The detector label and score come from a Layer 2 contract that does not exist yet, and the identity lines assume columns that may not survive preprocessing. This shows the *shape* of a case, not a real one.
 
