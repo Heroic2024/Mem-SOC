@@ -1,5 +1,7 @@
 """
-Groq API client for the Stage 4 report-generation pipeline.
+LLM API clients: Groq for the Stage 4 report-generation pipeline, and
+Groq or Gemini for per-alert triage, chosen once by
+config.TRIAGE_PROVIDER and identical for every arm.
 
 Uses `requests` directly against Groq's OpenAI-compatible chat-completions
 endpoint -- no extra SDK dependency, consistent with what the rest of this
@@ -8,6 +10,7 @@ repo already uses (src/memsoc/logstream/replay_to_api.py calls the
 """
 
 import json
+import os
 import re
 import sys
 import time
@@ -26,7 +29,24 @@ class DailyBudgetExhausted(RuntimeError):
     pass
 
 
-def _budget_state():
+def _budget(provider):
+    """(state file, daily limit, reserve) for one provider's quota."""
+
+    if provider == "gemini":
+        return (
+            config.GEMINI_REQUEST_BUDGET_PATH,
+            config.GEMINI_DAILY_REQUEST_LIMIT,
+            config.GEMINI_DAILY_REQUEST_RESERVE,
+        )
+
+    return (
+        config.REQUEST_BUDGET_PATH,
+        config.DAILY_REQUEST_LIMIT,
+        config.DAILY_REQUEST_RESERVE,
+    )
+
+
+def _budget_state(provider="groq"):
     """
     Today's request count, reset automatically at UTC midnight.
 
@@ -35,11 +55,13 @@ def _budget_state():
     silently overshoot.
     """
 
+    path, _, _ = _budget(provider)
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    if config.REQUEST_BUDGET_PATH.exists():
+    if path.exists():
         try:
-            with open(config.REQUEST_BUDGET_PATH, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 state = json.load(f)
             if state.get("date") == today:
                 return state
@@ -49,7 +71,7 @@ def _budget_state():
     return {"date": today, "count": 0}
 
 
-def budget_remaining() -> int:
+def budget_remaining(provider="groq") -> int:
     """
     Requests left before the reserve is reached.
 
@@ -58,17 +80,17 @@ def budget_remaining() -> int:
     any response has been seen.
     """
 
-    state = _budget_state()
+    _, limit, reserve = _budget(provider)
+
+    state = _budget_state(provider)
 
     if "provider_remaining" in state:
-        return state["provider_remaining"] - config.DAILY_REQUEST_RESERVE
+        return state["provider_remaining"] - reserve
 
-    usable = config.DAILY_REQUEST_LIMIT - config.DAILY_REQUEST_RESERVE
-
-    return usable - state["count"]
+    return limit - reserve - state["count"]
 
 
-def _charge_request() -> None:
+def _charge_request(provider="groq") -> None:
     """
     Record one request against today's budget, before it is sent.
 
@@ -78,35 +100,42 @@ def _charge_request() -> None:
     that make a run expensive.
     """
 
-    state = _budget_state()
+    path, limit, reserve = _budget(provider)
+
+    state = _budget_state(provider)
 
     if "provider_remaining" in state:
-        if state["provider_remaining"] <= config.DAILY_REQUEST_RESERVE:
+        if state["provider_remaining"] <= reserve:
             raise DailyBudgetExhausted(
                 f"Provider reports {state['provider_remaining']} requests "
-                f"remaining, at or below the {config.DAILY_REQUEST_RESERVE} "
+                f"remaining, at or below the {reserve} "
                 f"reserve (quota resets in {state.get('provider_reset', '?')}). "
                 "Completed verdicts are durable and the run resumes where "
                 "it stopped."
             )
 
-    usable = config.DAILY_REQUEST_LIMIT - config.DAILY_REQUEST_RESERVE
-
-    if state["count"] >= usable:
+    if state["count"] >= limit - reserve:
         raise DailyBudgetExhausted(
-            f"Daily request budget reached: {state['count']} of "
-            f"{config.DAILY_REQUEST_LIMIT} used "
-            f"(reserve {config.DAILY_REQUEST_RESERVE} held back). "
+            f"Daily {provider} request budget reached: {state['count']} of "
+            f"{limit} used "
+            f"(reserve {reserve} held back). "
             "The quota resets at UTC midnight; completed verdicts are "
             "durable and the run resumes where it stopped."
         )
 
     state["count"] += 1
 
-    config.REQUEST_BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(config.REQUEST_BUDGET_PATH, "w", encoding="utf-8") as f:
+    # Written to a temporary file and swapped in, so a concurrent reader
+    # (one process per arm) never sees a half-written file -- which
+    # _budget_state() would treat as unreadable and reset to zero.
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+
+    with open(temporary, "w", encoding="utf-8") as f:
         json.dump(state, f)
+
+    os.replace(temporary, path)
 
 
 def _record_quota(response) -> None:
@@ -343,3 +372,224 @@ def call_groq(prompt: str, max_tokens: int = None,
             )
 
         return text, latency_ms
+
+
+class GeminiAPIKeyMissing(RuntimeError):
+    pass
+
+
+def _gemini_retry(response):
+    """
+    (seconds to wait, is_daily) for a Gemini 429.
+
+    Gemini reports which quota tripped in the error details. A per-day
+    quota will not clear by waiting a minute, so it stops the run --
+    retrying it would only spend requests learning the same thing.
+    """
+
+    try:
+        details = response.json().get("error", {}).get("details", [])
+    except ValueError:
+        details = []
+
+    wait = config.RATE_LIMIT_FALLBACK_WAIT
+    daily = False
+
+    for detail in details:
+
+        kind = detail.get("@type", "")
+
+        if kind.endswith("RetryInfo"):
+            delay = str(detail.get("retryDelay", "")).rstrip("s")
+            try:
+                wait = float(delay) + 1.0
+            except ValueError:
+                pass
+
+        if kind.endswith("QuotaFailure"):
+            for violation in detail.get("violations", []):
+                if "PerDay" in violation.get("quotaId", ""):
+                    daily = True
+
+    return wait, daily
+
+
+def call_gemini(prompt: str, max_tokens: int = None):
+    """
+    Send `prompt` to Gemini and return (response_text, latency_ms).
+
+    Mirrors call_groq(): charged before sending, 429 retried as long as
+    the server asks up to config.RATE_LIMIT_MAX_RETRIES, a per-day quota
+    raises DailyBudgetExhausted, a response cut off at the token cap is
+    retried config.TRUNCATION_MAX_RETRIES times and then raises. Nothing
+    is ever defaulted or repaired.
+
+    The thinking level is left at the model's default, as the Groq
+    triage path leaves reasoning_effort unset.
+    """
+
+    if not config.GEMINI_API_KEY:
+        raise GeminiAPIKeyMissing(
+            "GEMINI_API_KEY is not set. Export it from .env into the "
+            "environment before running triage."
+        )
+
+    headers = {
+        "x-goog-api-key": config.GEMINI_API_KEY,
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": config.GEMINI_TEMPERATURE,
+            "maxOutputTokens": (
+                config.GEMINI_MAX_RESPONSE_TOKENS if max_tokens is None else max_tokens
+            ),
+            "responseMimeType": "application/json",
+        },
+    }
+
+    rate_limits = 0
+    truncations = 0
+    server_errors = 0
+
+    while True:
+
+        _charge_request("gemini")
+
+        start = time.time()
+
+        response = requests.post(
+            config.GEMINI_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=180,
+        )
+
+        latency_ms = (time.time() - start) * 1000
+
+        if response.status_code == 429:
+
+            wait, daily = _gemini_retry(response)
+
+            if daily:
+                raise DailyBudgetExhausted(
+                    "Gemini reports the per-day request quota is used up. "
+                    "Completed verdicts are durable and the run resumes "
+                    f"where it stopped.\n{response.text[:800]}"
+                )
+
+            if rate_limits < config.RATE_LIMIT_MAX_RETRIES:
+
+                rate_limits += 1
+
+                print(
+                    f"  rate limited, waiting {wait:.0f}s "
+                    f"({rate_limits}/{config.RATE_LIMIT_MAX_RETRIES})",
+                    file=sys.stderr,
+                )
+
+                time.sleep(wait)
+                continue
+
+        if (response.status_code in (500, 503)
+                and server_errors < config.SERVER_ERROR_MAX_RETRIES):
+
+            server_errors += 1
+            wait = config.SERVER_ERROR_BASE_WAIT * server_errors
+
+            print(
+                f"  server busy ({response.status_code}), waiting {wait:.0f}s "
+                f"({server_errors}/{config.SERVER_ERROR_MAX_RETRIES})",
+                file=sys.stderr,
+            )
+
+            time.sleep(wait)
+            continue
+
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            raise requests.HTTPError(
+                f"{e}\nGemini response body: {response.text[:1000]}"
+            ) from e
+
+        body = response.json()
+
+        candidates = body.get("candidates") or []
+
+        if not candidates:
+            raise RuntimeError(
+                "Gemini returned no candidates. "
+                f"promptFeedback={body.get('promptFeedback')}"
+            )
+
+        candidate = candidates[0]
+        finish = candidate.get("finishReason")
+
+        if finish == "MAX_TOKENS":
+
+            usage = body.get("usageMetadata", {})
+            detail = (
+                f"{payload['generationConfig']['maxOutputTokens']}-token cap, "
+                f"{usage.get('thoughtsTokenCount', '?')} spent thinking"
+            )
+
+            if truncations < config.TRUNCATION_MAX_RETRIES:
+
+                truncations += 1
+
+                print(
+                    f"  truncated ({detail}), retrying "
+                    f"{truncations}/{config.TRUNCATION_MAX_RETRIES}",
+                    file=sys.stderr,
+                )
+                continue
+
+            raise requests.HTTPError(
+                f"Response hit the {detail} on "
+                f"{config.TRUNCATION_MAX_RETRIES + 1} consecutive attempts. "
+                "This alert needs an explicit decision."
+            )
+
+        # Thought summaries, if any come back, are flagged and are not
+        # part of the answer.
+        parts = (candidate.get("content") or {}).get("parts") or []
+        text = "".join(
+            part.get("text", "") for part in parts if not part.get("thought")
+        )
+
+        if not text.strip():
+            raise RuntimeError(
+                f"Gemini returned an empty response. finishReason={finish}."
+            )
+
+        return text, latency_ms
+
+
+def triage_model_id() -> str:
+    """The model the triage path calls, as recorded in every verdict row."""
+
+    if config.TRIAGE_PROVIDER == "gemini":
+        return config.GEMINI_MODEL
+
+    return config.GROQ_MODEL
+
+
+def call_triage_llm(prompt: str):
+    """
+    The per-alert triage call, for every arm.
+
+    The one place the triage provider is chosen. Arms differ only in the
+    prompt they pass, never in how it is sent.
+    """
+
+    if config.TRIAGE_PROVIDER == "gemini":
+        return call_gemini(prompt)
+
+    return call_groq(
+        prompt,
+        max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
+        reasoning_effort=config.TRIAGE_REASONING_EFFORT,
+    )

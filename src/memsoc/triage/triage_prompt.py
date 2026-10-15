@@ -252,13 +252,59 @@ def _render_shap(shap_explanation, features) -> str:
     return "\n".join(lines)
 
 
-def render(record: dict, flow: dict = None) -> str:
+def _render_precedents(precedents) -> str:
+    """
+    The retrieved past cases, as records rather than instructions.
+
+    Format from docs/memory-layer/04-read-path.md, "Prompt injection
+    format": most similar first, case ID and similarity shown, the
+    stored verdict and its short rationale. Nothing here says whether
+    the stored verdicts were right -- in the self condition they are the
+    LLM's own unchecked conclusions, and whether they mislead is what
+    the experiment measures.
+
+    No precedents renders as the empty string, so the prompt is
+    byte-identical to the Arm A prompt: silence, not a stated absence.
+    """
+
+    if not precedents:
+        return ""
+
+    blocks = []
+
+    for case in sorted(precedents, key=lambda c: -c.similarity):
+
+        m = case.metadata
+        reasoning = m.get("rationale_summary") or "(none recorded)"
+
+        blocks.append(
+            f"[Case {case.case_id} -- similarity {case.similarity:.2f}]\n"
+            f"{case.document}\n"
+            f"Verdict: {m.get('verdict')} (confidence {float(m.get('confidence', 0.0)):.2f})\n"
+            f"Attack category: {m.get('attack_category')}\n"
+            f"Reasoning: {reasoning}"
+        )
+
+    return (
+        "Relevant past cases from this SOC's records:\n\n"
+        + "\n\n".join(blocks)
+        + "\n\n"
+    )
+
+
+def render(record: dict, flow: dict = None, precedents=()) -> str:
     """
     Build the triage prompt for a single alert.
 
     LOCKED. Treat any edit as a schema change: verdicts produced under
     different wording are not comparable, and mixing them within or
     between arms puts an uncontrolled variable into the experiment.
+
+    One approved edit, 2026-10-14 (BL-109): `precedents`, the memory
+    layer's retrieved cases, render as a section before TASK. With none
+    -- Arm A, and the first alert of every Arm B run -- the section is
+    empty and the prompt is byte-identical to the pre-edit one;
+    tests/test_triage_memory.py pins that with a hash.
 
     The wording is deliberately neutral about the detector's reliability.
     An earlier revision characterised it as strong on attack/benign and
@@ -306,7 +352,7 @@ Model explanation (SHAP -- which features drove the prediction, with their value
 
 A positive contribution pushed the model toward its predicted family; a negative one pushed against it. These indicate which fields the model attended to; weigh the measurements themselves as well.
 
-TASK
+{_render_precedents(precedents)}TASK
 Respond with ONLY a single valid JSON object -- no markdown code fences, no prose before or after it -- with exactly these keys:
 
 {{

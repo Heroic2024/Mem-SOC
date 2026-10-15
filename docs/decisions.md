@@ -361,9 +361,11 @@ exact identifier and the dates of the runs have to be recorded.
 **Recommendation:** temperature 0, one named model and version, both arms run in
 the same time window, and model drift listed as a limitation.
 
-**Status:** open. Related to BL-009.
+**Status:** **answered 2026-10-14** (see the clarification below). Related to BL-009 and BL-099.
 
 **Answer:** gemini-3.8-flash, temperature should be at a higher deterministic leve, balance it so that we can get satisfactory results for the paper
+
+**Clarified 2026-10-14:** `gemini-3.8-flash` on the Google Gemini API, temperature **0**, thinking level left at the model's default. It is used for per-alert triage in every arm; reports stay on Groq. Implemented in `src/memsoc/triage/config.py` and `llm_client.call_triage_llm()`. BL-099 is closed.
 
 --
 
@@ -390,7 +392,16 @@ would be a stronger version of the same problem.
 
 **Answer**: if there is space, let us go with the both the verdicts. Else, decide how you want to store it accrodingly. We have to get to the aim.
 
-**Status:** open. OQ-1.
+**Settled 2026-10-13: the alert only, plus the detector's top-3 SHAP feature
+names.** "Both verdicts" was ruled out because it cannot work: a new alert has
+no LLM verdict yet, so stored cases and queries would be written in different
+shapes (`memory-layer/retrieval-precision-investigation.md` §4.3). The
+detector's label line is also left out, because it measured worst on the
+detector's own errors (§3, §4.1). Verdicts and reasoning are still stored with
+every case and shown to the LLM; they just do not decide the match.
+Implemented as `schema_version 1.0` in `src/memsoc/memory/case_text.py`.
+
+**Status:** answered 2026-10-13. OQ-1.
 
 ### C2. Which embedding model, at which exact version?
 
@@ -408,6 +419,15 @@ this repository.
 
 **Answer:** go through the docs\embedding-model-options.md and decide what to go with
 
+**Settled 2026-10-13: `all-MiniLM-L6-v2`**, the recommendation in
+`embedding-model-options.md` §5. Its condition was that the case text fits 256
+tokens, and it does: template 1.0 measures p50 121, p99 136, max 143 over all
+215 alerts. The model is pinned in `src/memsoc/memory/embedding.py` by name, by
+Hugging Face commit `1110a243fdf4706b3f48f1d95db1a4f5529b4d41`, and to CPU.
+The package versions are pinned in `requirements/memory.txt`, and the full
+resolved set is in `artifacts/memory-env-freeze.txt`. **Status:** answered
+2026-10-13.
+
 ### C3. Which description format for a stored alert — the long one or the short one?
 
 **Recommendation: the short one, because it fits.** The long format runs to 273
@@ -424,6 +444,10 @@ reason.
 **Status:** open, measurement done. Tracked as BL-013, recorded under OQ-8.
 
 **Answer:** depends on embedding model, decide which is the best
+
+**Settled 2026-10-13: neither -- template 1.0 replaces both.** It is a short
+format (see C1) and fits MiniLM with room to spare (C2). The length check
+raises rather than truncating silently. **Status:** answered 2026-10-13.
 
 ## C4. Where does the stored attack type come from?
 
@@ -446,6 +470,13 @@ the answer key.
 **Status:** open. OQ-5.
 
 **Answer: **  decide this, we need to get results ASAP, let us go ahead with whatever gives us satisfactory results 
+
+**Settled 2026-10-13: write every case (`write_all`)**, as recommended. Note
+that "whatever gives satisfactory results" cannot be the selection rule:
+picking the write policy after seeing which one makes Arm B win is the tuning
+`CLAUDE.md` forbids. `write_all` is chosen before any run, because it keeps the
+error-spreading effect measurable. A confident-only policy remains the
+optional third variant (A3). **Status:** answered 2026-10-13.
 ## C6. Does memory carry over between runs?
 
 **Recommendation: no.** Each scored run gets its own fresh store on disk. Memory
@@ -469,6 +500,10 @@ hand-written cases would be inserting our own beliefs into the result.
 **Status:** open. OQ-4. Note the A3 decision does **not** settle this.
 
 **Answer:** Brand new memory after every run
+
+**Implemented 2026-10-13:** no pre-loading. Every run's store is its own
+directory, `paths.memory_store(run_id)`, and starts empty. **Status:** answered
+2026-10-13.
 
 ## C8. How many past alerts get retrieved, and is there a similarity cut-off?
 
@@ -495,6 +530,11 @@ hand-written cases would be inserting our own beliefs into the result.
 
 **Ans**: max 3 retrievals
 
+**Implemented 2026-10-13:** top 3, no cut-off (`store.TOP_K`). Re-measured on
+all 215 clean alerts: correct and wrong nearest matches both have a median
+similarity of 0.997, so a threshold still separates nothing. See Figure 3 in
+`notebooks/retrieval-quality.ipynb`. **Status:** answered 2026-10-13.
+
 ### C9. Does the detector get a version identifier?
 
 **The question:** nothing in the code or the output records which model produced
@@ -516,7 +556,13 @@ A version number makes that a clean break instead of silent corruption.
 
 **Status:** open. Tracked as BL-006. Quick to fix.
 
-Ans: yes this has to be there---
+Ans: yes this has to be there
+
+**Implemented 2026-10-13:** `schema_version "1.0"` is on every case and on the
+collection. A store written under any other version, embedding model or
+condition is refused. **Status:** answered 2026-10-13. BL-006 closed.
+
+---
 
 # Part D — Answer before submitting the paper
 

@@ -162,6 +162,11 @@ SAMPLE_MANIFEST = os.path.join(MODEL_OUTPUTS_DIR, "sample_manifest.json")
 # provider's daily cap rather than discovering it mid-experiment.
 REQUEST_BUDGET = os.path.join(MODEL_OUTPUTS_DIR, "request_budget.json")
 
+# The same count for the Gemini triage path. A separate file because the two
+# providers have separate quotas, and one tally would let a Groq report run
+# spend the Gemini allowance on paper, or the reverse.
+GEMINI_REQUEST_BUDGET = os.path.join(MODEL_OUTPUTS_DIR, "request_budget_gemini.json")
+
 # Layer 3, the memory layer: the on-disk ChromaDB store. Run-scoped, because
 # a scored run must not inherit another run's cases -- carrying memory across
 # runs makes run 2 a continuation rather than a repeat, which destroys both
@@ -195,6 +200,25 @@ def memory_store(run_id):
 
     return os.path.join(MEMORY_STORE_DIR, str(run_id))
 
+
+# Per-run triage output for memory runs: this run's verdicts, kept apart from
+# the Arm A file so runs never mix. Scoped like memory_store(), and for the
+# same reason run_id is required.
+RUNS_DIR = _env("MEMSOC_RUNS_DIR", os.path.join(ARTIFACTS_DIR, "runs"))
+
+
+def run_dir(run_id):
+    """The output directory for one triage run."""
+
+    if not run_id:
+        raise ValueError("run_id is required: run output is always scoped to one run")
+
+    return os.path.join(RUNS_DIR, str(run_id))
+
+
+# Charts saved by the analysis notebooks in notebooks/. Generated output,
+# so under artifacts/ with everything else.
+FIGURES_DIR = _env("MEMSOC_FIGURES_DIR", os.path.join(ARTIFACTS_DIR, "figures"))
 
 # Generated security reports, served read-only by the report API.
 REPORTS_DIR = _env("MEMSOC_REPORTS_DIR", os.path.join(ARTIFACTS_DIR, "reports"))
@@ -260,6 +284,8 @@ def describe() -> str:
         ("MODEL_OUTPUTS_DIR", MODEL_OUTPUTS_DIR, False),
         ("TRIAGE_VERDICTS", TRIAGE_VERDICTS, False),
         ("REPORTS_DIR", REPORTS_DIR, False),
+        ("RUNS_DIR", RUNS_DIR, False),
+        ("FIGURES_DIR", FIGURES_DIR, False),
         ("LOG_DIR", LOG_DIR, False),
         ("API_BASE", API_BASE, False),
         ("REPORT_BASE", REPORT_BASE, False),

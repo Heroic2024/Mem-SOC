@@ -109,6 +109,8 @@ A useful diagnostic: plot retrieval hit rate against `collection_count`. Where i
 
 ## Prompt injection format
 
+> **Implemented 2026-10-14** in `triage_prompt._render_precedents()` (BL-109), signed off as a protected-template change. Two differences from the example below: the case text is template 1.0 (no IPs, no detector line; see [02](./02-case-schema.md)), and the attack category is shown on its own line. The token budget rule is not needed at k = 3, where a case text is at most ~143 tokens; the block's size is logged per alert as `precedent_chars`.
+
 The retrieved cases are rendered into the **single shared prompt template** ([`PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md) §9). The template is a protected component: one object, identical across arms, no per-arm wording. With an empty case list it must produce the Arm A prompt exactly.
 
 ```

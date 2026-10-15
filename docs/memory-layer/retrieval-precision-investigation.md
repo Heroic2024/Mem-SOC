@@ -196,7 +196,7 @@ ones, before retrieval happens).
 
 | For | Read |
 |---|---|
-| The diagnostic scripts themselves | `scratchpad/memory_invariant_check.py`, `scratchpad/memory_retrieval_test.py` |
+| The diagnostic scripts themselves | `scratchpad/memory_invariant_check.py`, `scratchpad/memory_retrieval_test.py` — **never committed and no longer available (BL-115).** Superseded on 2026-10-13 by [`notebooks/retrieval-quality.ipynb`](../../notebooks/retrieval-quality.ipynb), which re-measures this with the production template over all 215 alerts, and by `tests/test_memory.py`, which covers the invariants. |
 | The original contaminated-data measurement this extends | [`PRODUCT_BACKLOG.md`](../PRODUCT_BACKLOG.md) `BL-014` |
 | The case schema and the C1 inconsistency this found | [`02-case-schema.md`](./02-case-schema.md) |
 | The numeric-embedding risk this confirms | [`06-risks-and-limitations.md`](./06-risks-and-limitations.md) R7 |

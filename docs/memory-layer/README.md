@@ -34,10 +34,21 @@ Every design choice documented here is therefore held to a stricter standard tha
 | [05 — Configuration](./05-configuration.md) | ChromaDB setup, embedding model pinning, persistence, config surface, operational commands |
 | [06 — Risks & limitations](./06-risks-and-limitations.md) | Failure modes specific to this layer, how each is detected, mitigated, and reported |
 | [07 — Open questions](./07-open-questions.md) | Decisions the team must make before Phase 2 locks. **Read this before implementing.** |
+| [Retrieval precision investigation](./retrieval-precision-investigation.md) | Phase 0 measurement of which case text retrieves best; source of template 1.0. Charts re-measured in [`notebooks/retrieval-quality.ipynb`](../../notebooks/retrieval-quality.ipynb) |
 
 ---
 
 ## Status
+
+**Update 2026-10-13: the module is built** in `src/memsoc/memory/`:
+
+| File | What it does |
+|---|---|
+| `embedding.py` | One shared, pinned MiniLM model; a length check that raises |
+| `case_text.py` | Case template `schema_version 1.0` |
+| `store.py` | `open_memory(run_id, condition)` with `off` / `self` / `oracle` |
+
+Contract tests are in `tests/test_memory.py`. Not yet wired into triage: that needs BL-109 and BL-110. Where the code and these documents disagree, the code and [`decisions.md`](../decisions.md) Part C are current. The original status follows.
 
 These documents are **Phase 0 design proposals**, not a record of built software. Nothing described here is implemented.
 

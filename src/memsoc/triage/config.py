@@ -176,3 +176,56 @@ REQUEST_BUDGET_PATH = Path(paths.REQUEST_BUDGET)
 
 # The evaluation oracle. score_verdicts.py is the only reader.
 GROUND_TRUTH_PATH = Path(paths.GROUND_TRUTH)
+
+# ----------------------------------------------------------------------
+# The per-alert triage LLM (both arms).
+#
+# decisions.md B5 (answered 2026-10-14): gemini-3.8-flash at temperature
+# 0. The provider is chosen here, once, and triage_runner.py calls the
+# same function for every arm -- the LLM is held constant by
+# construction. The aggregate report path above stays on Groq.
+#
+# "groq" remains selectable so the 2026-08-30 pilot setup can still be
+# reproduced, but a comparison between arms is only valid when both ran
+# under the same provider and model.
+# ----------------------------------------------------------------------
+TRIAGE_PROVIDER = "gemini"
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# The decided model is the default. GEMINI_MODEL in the environment
+# overrides it for one run -- used 2026-10-14, when every Flash model was
+# returning 503 "high demand" and the run went to gemini-3.5-flash-lite
+# (BL-117). The model actually called is recorded in every verdict row,
+# so runs under different models can never be mistaken for each other.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_MODEL}:generateContent"
+)
+GEMINI_TEMPERATURE = 0
+
+# Gemini counts thinking tokens against maxOutputTokens, and does not
+# reserve the cap against a per-minute token quota the way Groq does, so
+# a generous cap costs nothing and avoids truncating mid-thought.
+GEMINI_MAX_RESPONSE_TOKENS = 16384
+
+# Measured 2026-10-15 from the provider's own 429 (BL-117): the free tier
+# allows 500 generate requests per day PER MODEL
+# (generate_content_free_tier_requests, gemini-3.5-flash-lite), and a
+# per-minute limit that returned a handful of retryable 429s at three
+# concurrent runs paced 6 s apart. Other models' limits are unmeasured.
+# Gemini's per-day 429 stays the authority and stops every run cleanly.
+# Arms are run side by side so that the stop leaves them all on the same
+# prefix of the stream -- the purpose the Groq-era reserve served.
+GEMINI_DAILY_REQUEST_LIMIT = 500
+GEMINI_DAILY_REQUEST_RESERVE = 20
+GEMINI_PACE_SECONDS = 6.0
+
+GEMINI_REQUEST_BUDGET_PATH = Path(paths.GEMINI_REQUEST_BUDGET)
+
+# Gemini answers 503 "model is currently experiencing high demand" during
+# load spikes (observed 2026-10-14). Transient, so retried with a growing
+# wait -- but bounded: a persistent 503 stops the run like any other
+# error, and nothing is defaulted.
+SERVER_ERROR_MAX_RETRIES = 6
+SERVER_ERROR_BASE_WAIT = 15.0

@@ -75,3 +75,26 @@ sentence-transformers==6.1.0
 #   pip freeze > artifacts/memory-env-freeze.txt
 # Every run must be reproducible (CLAUDE.md), and this file pins only the
 # two direct dependencies.
+
+# ---------------------------------------------------------------------
+# Analysis only — notebooks/retrieval-quality.ipynb
+# ---------------------------------------------------------------------
+# Neither is imported by src/memsoc/memory/. They live here because the
+# retrieval-quality notebook calls the real memory module (the same
+# renderer and the same pinned model), so it must run in this venv.
+# Installing both changed no version already resolved above (checked
+# with a pip freeze diff, 2026-10-13).
+#
+# matplotlib — the charts.
+#   Rejected: seaborn and pandas. At 215 alerts the standard library's
+#   json/csv is enough, and both would add weight for no new capability.
+matplotlib==3.11.2
+
+# ipykernel — lets VS Code (or any Jupyter front-end) run the notebook
+#   against this venv.
+#   Register it once per machine, or Jupyter falls back to the system
+#   `python3` kernel, which has none of the packages above:
+#     <venv>/python -m ipykernel install --user --name memsoc-memory --display-name "Python (memsoc-memory)"
+#   Rejected: the full `jupyter` meta-package, which installs a server,
+#   a browser UI and many extensions that VS Code does not need.
+ipykernel==7.4.0
