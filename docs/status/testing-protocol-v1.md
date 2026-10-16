@@ -51,6 +51,14 @@ The program triages the **same first 165 alerts** three times, alert by alert:
 
 The program waits for the daily allowance by itself; you only keep it running (§4).
 
+**Start order:**
+
+| Tester | When to start |
+|---|---|
+| **M** | Any time. |
+| **G** | Any time. **G is also the Groq check:** G's first verdicts show that the Groq setup works before Q spends any quota (§4.4). |
+| **Q** | Only after Aryan sends Q the message **"Q: go"**. Aryan sends it after G's checkpoint (§4.4) looks right. Q may do all of §3, including `--preflight`, before that. |
+
 ---
 
 ## 2. What is held identical for all three testers (you change none of it)
@@ -58,7 +66,7 @@ The program waits for the daily allowance by itself; you only keep it running (�
 | Item | Value | Enforced by |
 |---|---|---|
 | Code | git tag `memsoc-protocol-v1` | `--preflight` checks the checkout and that `src\`, `tests\`, `requirements\` are unmodified |
-| Data | `memsoc-protocol-v1-data.zip`: stream v2, 120,000 flows, seed 42, 1,135 detector alerts | `--preflight` checks three SHA-256 hashes |
+| Data | `artifacts\memsoc-protocol-v1-data.zip`, included in the repository at the tag: stream v2, 120,000 flows, seed 42, 1,135 detector alerts | `--preflight` checks three SHA-256 hashes |
 | Alerts | the **first 165** in stream order | fixed in code; preflight checks their identity hash |
 | Arms and order | for each alert: A, then B-self, then B-oracle | fixed in code |
 | Prompt | the project's frozen triage prompt | preflight checks the hash of alert 0's prompt |
@@ -116,17 +124,22 @@ A `[notice] A new release of pip is available` line is normal. **Ignore it; do n
 
 ### 3.4 Put the data in place
 
-Aryan sends you a link to **`memsoc-protocol-v1-data.zip`** (21.5 MB). Download it to your `Downloads` folder, then:
+The data bundle **`memsoc-protocol-v1-data.zip`** (21.5 MB) came with the code in §3.2, at `artifacts\memsoc-protocol-v1-data.zip`. Unpack it where it is:
 
 ```powershell
 cd $env:USERPROFILE\Mem-SOC
-Expand-Archive -Path "$env:USERPROFILE\Downloads\memsoc-protocol-v1-data.zip" -DestinationPath "$env:USERPROFILE\Mem-SOC\artifacts" -Force
+Expand-Archive -Path artifacts\memsoc-protocol-v1-data.zip -DestinationPath artifacts -Force
 Get-ChildItem artifacts, artifacts\model_outputs
 ```
 
-**Expected:** `artifacts` contains `generated_logs.jsonl` (~172 MB), `ground_truth.csv` (~4.3 MB) and `SHA256SUMS.txt`, and `artifacts\model_outputs` contains `live_results.jsonl` (~30.6 MB).
+**Expected:**
+- `artifacts` contains `memsoc-protocol-v1-data.zip`, `generated_logs.jsonl` (~172 MB), `ground_truth.csv` (~4.3 MB) and `SHA256SUMS.txt`.
+- `artifacts\model_outputs` contains `live_results.jsonl` (~30.6 MB).
+- Leave the zip where it is. Do not delete or move it.
 
-For reference, the zip's own SHA-256 is `233567572d8de10446c9aac6562f96b085cfb8c19ddad8a35b86dadd07843376`, which `Get-FileHash <zip>` shows. Preflight checks the extracted files themselves.
+If `artifacts\memsoc-protocol-v1-data.zip` is missing, you are not on the tag: redo the `git checkout memsoc-protocol-v1` line of §3.2.
+
+For reference, the zip's SHA-256 is `233567572d8de10446c9aac6562f96b085cfb8c19ddad8a35b86dadd07843376` (`Get-FileHash artifacts\memsoc-protocol-v1-data.zip`). Preflight checks the extracted files themselves.
 
 ### 3.5 Create your API key and the `.env` file (the tester does this, not the agent)
 
@@ -220,6 +233,20 @@ In a PowerShell window with the three setup lines from §3.6 already run:
 
 Send the output of `--status`. Nothing else is needed unless something went wrong.
 
+### 4.4 Tester G only — the Groq checkpoint (about 10 minutes after starting)
+
+Your first verdicts are the check that the Groq setup works.
+
+1. When the line starting **`[9/495]`** appears, copy the nine verdict lines `[1/495]` to `[9/495]`, plus any `ERROR`, `413`, `Request too large` or `json_validate_failed` lines above them.
+2. Send them to Aryan with the subject **"G checkpoint"**.
+3. **Keep the run going.** Do not stop it unless Aryan tells you to.
+
+If the run stops with an error **before** `[9/495]`:
+- Follow §7.
+- Send Aryan the last 30 lines with the subject **"G checkpoint failed"**.
+
+Aryan then tells Q either "Q: go" or to wait.
+
 ---
 
 ## 5. Exit codes — what the program's ending means
@@ -281,6 +308,7 @@ Then you are done. **Do not delete** the `Mem-SOC` folder until Aryan confirms r
 | `FAIL API answers in JSON mode` with `404`, `model not found` or `decommissioned` | The provider removed the model. **Stop. Message Aryan.** Do not switch models. |
 | `FAIL API answers in JSON mode`, anything else | Message Aryan with the line. |
 | `FAIL local daily request budget` | Today's allowance is used up. Try again tomorrow. |
+| `413`, `Request too large` or `json_validate_failed` anywhere in the output | **Stop the run (Ctrl-C) if it is still going, and message Aryan** with the last 30 lines. Do not retry. These mean the Groq settings themselves need a decision. |
 | `ERROR on alert ...` (the run stopped) | Copy the last 30 lines. Wait 10 minutes, then run §4.1 once more. If it stops again with the same error, **stop** and send Aryan both outputs. |
 | Many `server busy` or `rate limited` lines, but verdict lines keep appearing | Normal. Do nothing. |
 | `Daily quota reached. Waiting ...` | Normal. Do nothing; leave the window open. |
@@ -318,16 +346,21 @@ Aryan analyses all three models together after receiving the zips. Every alert i
 
 ## 10. For Aryan only — release checklist and afterwards (testers skip this)
 
-**Before sending this document to the testers:**
-1. **Groq check.** Put a working free Groq key in `.env` (the old one returns 401, BL-120). Then, with `MEMSOC_RUNS_DIR` and `MEMSOC_MEMORY_STORE_DIR` pointed at a scratch folder, run `--preflight` and a 2-alert smoke run for `gpt-oss-20b` and `qwen3.8-27b`, as was done for Gemma on 2026-10-16. Confirm:
-   - JSON mode is accepted, and the 6,000-token cap fits within Groq's 8K TPM beside the largest memory prompt;
-   - the tokens per call, which sets the 4–8 day estimate in §1;
-   - from the Groq dashboard, whether `max_tokens` counts against the 200K TPD. If it does, the estimate becomes about 3 weeks.
+**Done 2026-10-16:**
+- Code, this document and the data zip are committed on branch `aryan`.
+- The tag `memsoc-protocol-v1` is pushed.
+- The Gemma smoke run (2 alerts × 3 arms) passed preflight, verify and package.
 
-   If anything has to change, change it before tagging.
-2. Commit, create the tag `memsoc-protocol-v1` on that commit, and push the branch and the tag.
-3. Share `artifacts\memsoc-protocol-v1-data.zip` (SHA-256 `233567572d8de10446c9aac6562f96b085cfb8c19ddad8a35b86dadd07843376`) through Google Drive. Add the testers as GitHub collaborators if the repo is private.
-4. Send each tester this document, their row from §1, and the data link.
+**Still to do before testers start:**
+1. Add the three testers as collaborators on the private GitHub repo `Heroic2024/Mem-SOC`.
+2. Send each tester this document's path in the repo and their row from §1.
+
+**The Groq check is delegated to Tester G.** Aryan could not create a Groq key (BL-120), so G's first 9 verdicts serve as the check (§4.4). When G's checkpoint arrives, confirm three things:
+- Nine verdict lines, with no `413`, `Request too large` or `json_validate_failed`. This shows JSON mode and the 6,000-token cap fit Groq's 8K TPM.
+- The `tokens=` values. Total days ≈ 495 ÷ (200,000 ÷ average tokens per call).
+- G's daily `--status` count, which shows empirically whether Groq also counts the `max_tokens` reservation against the daily token limit. Roughly 25–30 verdicts a day would mean it does, about 3 weeks in total.
+
+If all is well, send Q "Q: go". If not, tell G to stop and decide the fix before anyone continues. Any code change means a new protocol version, and G's partial run is then discarded.
 
 **When the zips arrive:**
 1. Unzip each into the repo's `artifacts\`. The zip is laid out as `runs\...` and `memory\...`.
