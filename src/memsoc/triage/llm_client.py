@@ -16,8 +16,11 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 import requests
 
+from memsoc import paths
 from memsoc.triage import config
 
 
@@ -26,27 +29,62 @@ class GroqAPIKeyMissing(RuntimeError):
 
 
 class DailyBudgetExhausted(RuntimeError):
-    pass
+    """
+    A per-day quota is used up. `retry_after` is the provider's own wait
+    in seconds when it gave one (Groq's daily windows roll), else None.
+    """
+
+    def __init__(self, message, retry_after=None):
+
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
-def _budget(provider):
-    """(state file, daily limit, reserve) for one provider's quota."""
+# Token usage of the last successful call, as the provider reported it.
+# Read by protocol_run.py to log tokens per verdict; the free tiers' daily
+# token caps make this the number that sets how long a run takes.
+LAST_USAGE = {}
 
-    if provider == "gemini":
-        return (
-            config.GEMINI_REQUEST_BUDGET_PATH,
-            config.GEMINI_DAILY_REQUEST_LIMIT,
-            config.GEMINI_DAILY_REQUEST_RESERVE,
-        )
+
+def _default_model(provider):
+    """The model a budget question refers to when the caller names none."""
+
+    if provider == config.TRIAGE_PROVIDER:
+        return config.TRIAGE_MODEL
+
+    return config.GROQ_MODEL if provider == "groq" else config.GEMINI_MODEL
+
+
+def _budget(provider, model=None):
+    """
+    (state file, daily limit, reserve) for one model's quota.
+
+    Per model, not per provider (BL-121): the free tiers meter each model
+    separately, and one shared tally stopped a 14,400-a-day model at 480.
+    """
+
+    model = model or _default_model(provider)
+
+    limit = config.DAILY_REQUEST_LIMITS.get(model, config.DEFAULT_DAILY_REQUEST_LIMIT)
+
+    reserve = (
+        config.GEMINI_DAILY_REQUEST_RESERVE
+        if provider == "gemini"
+        else config.DAILY_REQUEST_RESERVE
+    )
+
+    # Never hold back more than 5% of a model's allowance: a fixed reserve
+    # of 20 against a 20-a-day model would forbid every request.
+    reserve = min(reserve, limit // 20)
 
     return (
-        config.REQUEST_BUDGET_PATH,
-        config.DAILY_REQUEST_LIMIT,
-        config.DAILY_REQUEST_RESERVE,
+        Path(paths.request_budget(provider, model)),
+        limit,
+        reserve,
     )
 
 
-def _budget_state(provider="groq"):
+def _budget_state(provider="groq", model=None):
     """
     Today's request count, reset automatically at UTC midnight.
 
@@ -55,7 +93,7 @@ def _budget_state(provider="groq"):
     silently overshoot.
     """
 
-    path, _, _ = _budget(provider)
+    path, _, _ = _budget(provider, model)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -71,7 +109,7 @@ def _budget_state(provider="groq"):
     return {"date": today, "count": 0}
 
 
-def budget_remaining(provider="groq") -> int:
+def budget_remaining(provider="groq", model=None) -> int:
     """
     Requests left before the reserve is reached.
 
@@ -80,9 +118,9 @@ def budget_remaining(provider="groq") -> int:
     any response has been seen.
     """
 
-    _, limit, reserve = _budget(provider)
+    _, limit, reserve = _budget(provider, model)
 
-    state = _budget_state(provider)
+    state = _budget_state(provider, model)
 
     if "provider_remaining" in state:
         return state["provider_remaining"] - reserve
@@ -90,7 +128,7 @@ def budget_remaining(provider="groq") -> int:
     return limit - reserve - state["count"]
 
 
-def _charge_request(provider="groq") -> None:
+def _charge_request(provider="groq", model=None) -> None:
     """
     Record one request against today's budget, before it is sent.
 
@@ -100,9 +138,9 @@ def _charge_request(provider="groq") -> None:
     that make a run expensive.
     """
 
-    path, limit, reserve = _budget(provider)
+    path, limit, reserve = _budget(provider, model)
 
-    state = _budget_state(provider)
+    state = _budget_state(provider, model)
 
     if "provider_remaining" in state:
         if state["provider_remaining"] <= reserve:
@@ -116,7 +154,8 @@ def _charge_request(provider="groq") -> None:
 
     if state["count"] >= limit - reserve:
         raise DailyBudgetExhausted(
-            f"Daily {provider} request budget reached: {state['count']} of "
+            f"Daily {provider} request budget for {model or _default_model(provider)} "
+            f"reached: {state['count']} of "
             f"{limit} used "
             f"(reserve {reserve} held back). "
             "The quota resets at UTC midnight; completed verdicts are "
@@ -135,10 +174,29 @@ def _charge_request(provider="groq") -> None:
     with open(temporary, "w", encoding="utf-8") as f:
         json.dump(state, f)
 
-    os.replace(temporary, path)
+    # On Windows the swap is refused while another arm has the file open
+    # for reading (observed 2026-10-16: WinError 5). Readers hold it for
+    # microseconds, so a short retry clears it. If it never clears, the
+    # increment is dropped with a warning rather than crashing the run:
+    # this count is only a backstop, and the provider's per-day 429
+    # remains the authority.
+    for _ in range(50):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            time.sleep(0.02)
+
+    os.remove(temporary)
+
+    print(
+        f"  WARNING: could not update {path.name}; one {provider} request "
+        "went uncounted locally",
+        file=sys.stderr,
+    )
 
 
-def _record_quota(response) -> None:
+def _record_quota(response, model=None) -> None:
     """
     Store the provider's own remaining-request count from the response
     headers.
@@ -162,13 +220,17 @@ def _record_quota(response) -> None:
     except ValueError:
         return
 
-    state = _budget_state()
+    path, _, _ = _budget("groq", model)
+
+    state = _budget_state("groq", model)
     state["provider_remaining"] = remaining
     state["provider_reset"] = response.headers.get(
         "x-ratelimit-reset-requests", ""
     )
 
-    with open(config.REQUEST_BUDGET_PATH, "w", encoding="utf-8") as f:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(state, f)
 
 
@@ -190,12 +252,43 @@ def _retry_after_seconds(response) -> float:
         except ValueError:
             pass
 
-    match = re.search(r"try again in ([0-9.]+)s", response.text)
+    wait = _quoted_wait(response.text)
 
-    if match:
-        return float(match.group(1))
+    return config.RATE_LIMIT_FALLBACK_WAIT if wait is None else wait
 
-    return config.RATE_LIMIT_FALLBACK_WAIT
+
+def _quoted_wait(text):
+    """
+    Seconds in "try again in 48m10.08s" / "1h2m3s" / "20.22s" / "250ms",
+    or None. Groq quotes daily-window waits in minutes and hours, which a
+    seconds-only pattern silently misread.
+    """
+
+    match = re.search(
+        r"try again in ((?:[0-9.]+h)?(?:[0-9.]+m(?!s))?(?:[0-9.]+s)?(?:[0-9.]+ms)?)",
+        text,
+    )
+
+    if not match or not match.group(1):
+        return None
+
+    seconds = 0.0
+
+    for value, unit in re.findall(r"([0-9.]+)(ms|h|m|s)", match.group(1)):
+        seconds += float(value) * {"h": 3600, "m": 60, "s": 1, "ms": 0.001}[unit]
+
+    return seconds
+
+
+def _groq_is_daily(response) -> bool:
+    """True when a Groq 429 names a per-day limit (TPD or RPD)."""
+
+    try:
+        message = response.json().get("error", {}).get("message", "")
+    except ValueError:
+        message = response.text
+
+    return "per day" in message.lower()
 
 
 # Distinguishes "caller said nothing about reasoning effort" from
@@ -206,7 +299,8 @@ _EFFORT_UNSET = object()
 
 
 def call_groq(prompt: str, max_tokens: int = None,
-              reasoning_effort=_EFFORT_UNSET):
+              reasoning_effort=_EFFORT_UNSET, model: str = None,
+              json_mode: bool = False):
     """
     Send `prompt` to Groq and return (response_text, latency_ms).
 
@@ -223,10 +317,16 @@ def call_groq(prompt: str, max_tokens: int = None,
     actually returns, so an oversized reservation throttles throughput
     for no benefit.
 
+    `model` defaults to config.GROQ_MODEL (the report model); the triage
+    path passes config.TRIAGE_MODEL. `json_mode` asks for a JSON-only
+    answer (response_format json_object), as the Gemini path does.
+
     HTTP 429 is retried up to config.RATE_LIMIT_MAX_RETRIES times,
-    waiting as long as the server asks. Every other non-2xx status
-    raises immediately -- a 401 or a 400 will not fix itself, and
-    retrying it would waste the budget.
+    waiting as long as the server asks -- unless it names a per-day
+    limit, which raises DailyBudgetExhausted carrying the quoted wait.
+    500/502/503 are retried like Gemini's (config.SERVER_ERROR_*). Every
+    other non-2xx status raises immediately -- a 401 or a 400 will not
+    fix itself, and retrying it would waste the budget.
 
     Raises GroqAPIKeyMissing if config.GROQ_API_KEY is still the
     placeholder. Raises requests.HTTPError on a non-2xx response, or
@@ -245,8 +345,10 @@ def call_groq(prompt: str, max_tokens: int = None,
         "Content-Type": "application/json",
     }
 
+    model = model or config.GROQ_MODEL
+
     payload = {
-        "model": config.GROQ_MODEL,
+        "model": model,
         "temperature": config.TEMPERATURE,
         "max_tokens": (
             config.MAX_RESPONSE_TOKENS if max_tokens is None else max_tokens
@@ -265,16 +367,20 @@ def call_groq(prompt: str, max_tokens: int = None,
     if effort is not None:
         payload["reasoning_effort"] = effort
 
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+
     # Two independent retry budgets. A run that waits out several rate
     # limits has not used up its tolerance for truncated reasoning, and
     # vice versa -- sharing one counter between them would let a burst
     # of 429s cause an unrelated alert to be abandoned.
     rate_limits = 0
     truncations = 0
+    server_errors = 0
 
     while True:
 
-        _charge_request()
+        _charge_request("groq", model)
 
         start = time.time()
 
@@ -287,7 +393,30 @@ def call_groq(prompt: str, max_tokens: int = None,
 
         latency_ms = (time.time() - start) * 1000
 
-        _record_quota(response)
+        _record_quota(response, model)
+
+        if response.status_code == 429 and _groq_is_daily(response):
+            raise DailyBudgetExhausted(
+                "Groq reports a per-day limit is used up. Completed "
+                "verdicts are durable and the run resumes where it "
+                f"stopped.\n{response.text[:800]}",
+                retry_after=_quoted_wait(response.text),
+            )
+
+        if (response.status_code in (500, 502, 503)
+                and server_errors < config.SERVER_ERROR_MAX_RETRIES):
+
+            server_errors += 1
+            wait = config.SERVER_ERROR_BASE_WAIT * server_errors
+
+            print(
+                f"  server busy ({response.status_code}), waiting {wait:.0f}s "
+                f"({server_errors}/{config.SERVER_ERROR_MAX_RETRIES})",
+                file=sys.stderr,
+            )
+
+            time.sleep(wait)
+            continue
 
         if (response.status_code == 429
                 and rate_limits < config.RATE_LIMIT_MAX_RETRIES):
@@ -371,6 +500,16 @@ def call_groq(prompt: str, max_tokens: int = None,
                 f"reasoning_chars={len(reasoning or '')}."
             )
 
+        usage = body.get("usage", {})
+
+        LAST_USAGE.clear()
+        LAST_USAGE.update({
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+        })
+
         return text, latency_ms
 
 
@@ -414,7 +553,8 @@ def _gemini_retry(response):
     return wait, daily
 
 
-def call_gemini(prompt: str, max_tokens: int = None):
+def call_gemini(prompt: str, max_tokens: int = None, model: str = None,
+                json_mode: bool = True):
     """
     Send `prompt` to Gemini and return (response_text, latency_ms).
 
@@ -426,6 +566,9 @@ def call_gemini(prompt: str, max_tokens: int = None):
 
     The thinking level is left at the model's default, as the Groq
     triage path leaves reasoning_effort unset.
+
+    `model` defaults to config.TRIAGE_MODEL: Gemini is used for triage
+    only. `json_mode` sets responseMimeType to application/json.
     """
 
     if not config.GEMINI_API_KEY:
@@ -439,6 +582,9 @@ def call_gemini(prompt: str, max_tokens: int = None):
         "Content-Type": "application/json",
     }
 
+    model = model or config.TRIAGE_MODEL
+    url = f"{config.GEMINI_API_BASE}{model}:generateContent"
+
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -446,9 +592,11 @@ def call_gemini(prompt: str, max_tokens: int = None):
             "maxOutputTokens": (
                 config.GEMINI_MAX_RESPONSE_TOKENS if max_tokens is None else max_tokens
             ),
-            "responseMimeType": "application/json",
         },
     }
+
+    if json_mode:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
 
     rate_limits = 0
     truncations = 0
@@ -456,12 +604,12 @@ def call_gemini(prompt: str, max_tokens: int = None):
 
     while True:
 
-        _charge_request("gemini")
+        _charge_request("gemini", model)
 
         start = time.time()
 
         response = requests.post(
-            config.GEMINI_API_URL,
+            url,
             headers=headers,
             json=payload,
             timeout=180,
@@ -565,16 +713,23 @@ def call_gemini(prompt: str, max_tokens: int = None):
                 f"Gemini returned an empty response. finishReason={finish}."
             )
 
+        usage = body.get("usageMetadata", {})
+
+        LAST_USAGE.clear()
+        LAST_USAGE.update({
+            "prompt_tokens": usage.get("promptTokenCount"),
+            "output_tokens": (usage.get("candidatesTokenCount") or 0) + (usage.get("thoughtsTokenCount") or 0),
+            "reasoning_tokens": usage.get("thoughtsTokenCount"),
+            "total_tokens": usage.get("totalTokenCount"),
+        })
+
         return text, latency_ms
 
 
 def triage_model_id() -> str:
     """The model the triage path calls, as recorded in every verdict row."""
 
-    if config.TRIAGE_PROVIDER == "gemini":
-        return config.GEMINI_MODEL
-
-    return config.GROQ_MODEL
+    return config.TRIAGE_MODEL
 
 
 def call_triage_llm(prompt: str):
@@ -586,10 +741,17 @@ def call_triage_llm(prompt: str):
     """
 
     if config.TRIAGE_PROVIDER == "gemini":
-        return call_gemini(prompt)
+        return call_gemini(
+            prompt,
+            max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
+            model=config.TRIAGE_MODEL,
+            json_mode=config.TRIAGE_JSON_MODE,
+        )
 
     return call_groq(
         prompt,
         max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
         reasoning_effort=config.TRIAGE_REASONING_EFFORT,
+        model=config.TRIAGE_MODEL,
+        json_mode=config.TRIAGE_JSON_MODE,
     )

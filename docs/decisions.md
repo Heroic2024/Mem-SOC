@@ -332,6 +332,8 @@ a single figure, for every number. Compare the two arms alert-by-alert
 
 **Status:** open. Tracked as BL-017, and settles half of OQ-6.
 
+**Scoped 2026-10-16 for protocol v1:** the **first 165 alerts** in stream order (the same slice as the 2026-10-15 Flash-Lite run), all three arms, **one run per arm per model**. The free tiers' daily token limits make 1,135 alerts × 3 repeats infeasible. Three repeats remain the target for a later round; this round reports one run per arm and says so.
+
 ### B4. Which version of the prompt do we use?
 
 **The question:** three options — tell the LLM the detector's answer is correct;
@@ -366,6 +368,16 @@ the same time window, and model drift listed as a limitation.
 **Answer:** gemini-3.8-flash, temperature should be at a higher deterministic leve, balance it so that we can get satisfactory results for the paper
 
 **Clarified 2026-10-14:** `gemini-3.8-flash` on the Google Gemini API, temperature **0**, thinking level left at the model's default. It is used for per-alert triage in every arm; reports stay on Groq. Implemented in `src/memsoc/triage/config.py` and `llm_client.call_triage_llm()`. BL-099 is closed.
+
+**Amended 2026-10-16 — three free models replace `gemini-3.8-flash`.** Its free tier allows 20 requests a day (BL-117), so the full test would take about 170 days. Paid tiers stay ruled out (A4). The test now runs on three free models, one per tester, under test protocol v1 (`docs/status/testing-protocol-v1.md`):
+
+| Tester | Model | Provider |
+|---|---|---|
+| G | `openai/gpt-oss-20b` (the August pilot's model) | Groq |
+| Q | `qwen/qwen3.8-27b` (a Groq *preview* model, so it can be withdrawn) | Groq |
+| M | `gemma-4-26b-a4b-it` | Google AI Studio |
+
+The settings are identical for all three: temperature 0; a 6,000-token output cap for every model (it was 16,384 on Gemini); JSON answer mode on both providers; reasoning or thinking at each model's default. Nothing was chosen by looking at Arm B results. Models are compared with each other, never pooled.
 
 --
 

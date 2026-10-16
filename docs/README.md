@@ -50,6 +50,8 @@ package under `src/memsoc/` and one directory here.
 | See the retrieval-quality charts (token fit, family match, thresholds) | [`../notebooks/retrieval-quality.ipynb`](../notebooks/retrieval-quality.ipynb) — run in the memory venv; PNGs land in `artifacts/figures/` |
 | Know what is broken or missing | [`PRODUCT_BACKLOG.md`](./PRODUCT_BACKLOG.md) |
 | See where the project stands | [`status/phase0.md`](./status/phase0.md) |
+| **See every test result so far (Arm A and B together) and the options for the next run** | [`status/testing-results-to-date.md`](./status/testing-results-to-date.md) |
+| **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v1.md`](./status/testing-protocol-v1.md) |
 
 ---
 
@@ -87,7 +89,9 @@ docs/
 │   └── retrieval-precision-investigation.md
 ├── design-assets/             scripts + figures for the design document
 ├── status/
-│   └── phase0.md
+│   ├── phase0.md
+│   ├── testing-results-to-date.md
+│   └── testing-protocol-v1.md
 └── archive/                   superseded, banner-marked, do not follow
 ```
 

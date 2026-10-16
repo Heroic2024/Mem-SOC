@@ -167,6 +167,21 @@ REQUEST_BUDGET = os.path.join(MODEL_OUTPUTS_DIR, "request_budget.json")
 # spend the Gemini allowance on paper, or the reverse.
 GEMINI_REQUEST_BUDGET = os.path.join(MODEL_OUTPUTS_DIR, "request_budget_gemini.json")
 
+
+def request_budget(provider, model):
+    """
+    The request count for one model at one provider.
+
+    Free-tier quotas are per model (BL-121): one tally per provider would
+    let a run of one model spend another model's allowance on paper. The
+    model id's "/" and other punctuation are flattened so the name is a
+    plain file name.
+    """
+
+    slug = "".join(c if c.isalnum() or c in ".-" else "-" for c in str(model))
+
+    return os.path.join(MODEL_OUTPUTS_DIR, f"request_budget_{provider}_{slug}.json")
+
 # Layer 3, the memory layer: the on-disk ChromaDB store. Run-scoped, because
 # a scored run must not inherit another run's cases -- carrying memory across
 # runs makes run 2 a continuation rather than a repeat, which destroys both
