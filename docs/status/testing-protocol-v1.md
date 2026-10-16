@@ -112,6 +112,8 @@ py -3.13 -m venv "$env:USERPROFILE\.venvs\memsoc-memory"
 
 **Expected:** it downloads about 2 GB (torch is most of it) and ends with `Successfully installed ...`. This takes 5–20 minutes. Run it from inside `Mem-SOC`. Do **not** add or upgrade any package, and do **not** omit the `-c ...constraints.txt` part.
 
+A `[notice] A new release of pip is available` line is normal. **Ignore it; do not upgrade pip.**
+
 ### 3.4 Put the data in place
 
 Aryan sends you a link to **`memsoc-protocol-v1-data.zip`** (21.5 MB). Download it to your `Downloads` folder, then:
