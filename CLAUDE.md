@@ -72,6 +72,7 @@ deploy/                Dockerfiles + docker-compose.yml, NO application code
 requirements/          one file per deployable
 artifacts/             ALL runtime output — gitignored
 tests/                 contract tests; manual/ holds non-unittest smoke scripts
+notebooks/             analysis notebooks, committed with outputs cleared; figures → artifacts/figures/
 docs/                  see docs/README.md
 data/                  the dataset — gitignored, bind-mounted into containers
 ```

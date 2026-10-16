@@ -15,21 +15,24 @@ score_verdicts.py.
 
 Arm A vs Arm B
 --------------
-This is Arm A. It writes nothing to a memory store and retrieves
-nothing -- `precedent_used` is always "" and `precedent_count` always 0.
+Both arms are this one script. `--memory` picks the memory layer's
+condition (memsoc.memory.open_memory): "off" is Arm A, "self" and
+"oracle" are Arm B. The only steps that differ are the two seams in
+triage_alert() and the write-back in main() -- retrieval before
+triage_prompt.render(), write-back after the verdict is logged -- and
+under "off" both are no-ops inside the memory layer, not branches here.
+PROJECT_BRIEF.md section 9 requires exactly this.
 
-Phase 2 turns this into Arm B by inserting two steps into triage_alert()
-below: a retrieval step before triage_prompt.render(), and a write-back
-step after triage_prompt.parse_llm_response(). It does NOT add a second
-codepath or an `if arm == ...` branch -- PROJECT_BRIEF.md section 9
-requires the arms share everything except those two steps, so that any
-measured difference is attributable to memory and not to incidental
-implementation drift.
+A run given --run-id writes to its own directory, paths.run_dir(run_id),
+and triages every alert in stream order: memory depends on order and on
+density, so a memory run cannot use the stratified subsample. Without
+--run-id, an "off" run behaves exactly as the Phase 1 pilot did.
 
 Usage (from the repo root, with src/ on PYTHONPATH):
-    python -m memsoc.triage.triage_runner              # every untriaged alert
+    python -m memsoc.triage.triage_runner              # Arm A, pilot sample
     python -m memsoc.triage.triage_runner --limit 5    # first 5 untriaged
     python -m memsoc.triage.triage_runner --dry-run    # one prompt, no call
+    python -m memsoc.triage.triage_runner --memory self --run-id <id>
 """
 
 import argparse
@@ -39,9 +42,12 @@ import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
+from memsoc import paths
+from memsoc.memory import open_memory
 from memsoc.triage import config
 from memsoc.triage import llm_client
 from memsoc.triage import stats_engine
@@ -118,7 +124,7 @@ def select_sample(alerts):
         by_category[alert["multiclass"]["prediction"]].append(alert["uid"])
 
     rng = random.Random(config.SAMPLE_SEED)
-    chosen = set(load_done_uids())
+    chosen = set(load_done_uids(config.VERDICTS_PATH))
 
     for category in sorted(by_category):
 
@@ -190,7 +196,40 @@ def load_flows():
     return flows
 
 
-def load_done_uids():
+def load_done_rows(verdicts_path):
+    """
+    Every verdict row already written, keyed by uid.
+
+    This is what makes a run resumable. The check happens before the API
+    call, so an interrupted run resumes at no request cost.
+    """
+
+    if not verdicts_path.exists():
+        return {}
+
+    rows = {}
+
+    with open(verdicts_path, "r", encoding="utf-8") as f:
+
+        for line in f:
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            try:
+                row = json.loads(line)
+                rows[row["uid"]] = row
+            except (json.JSONDecodeError, KeyError):
+                # A half-written trailing line from an interrupted run;
+                # that alert is retried, which is correct.
+                continue
+
+    return rows
+
+
+def load_done_uids(verdicts_path):
     """
     uids already present in the verdicts file.
 
@@ -199,12 +238,12 @@ def load_done_uids():
     most valuable property of this script given the API budget.
     """
 
-    if not config.VERDICTS_PATH.exists():
+    if not verdicts_path.exists():
         return set()
 
     done = set()
 
-    with open(config.VERDICTS_PATH, "r", encoding="utf-8") as f:
+    with open(verdicts_path, "r", encoding="utf-8") as f:
 
         for line in f:
 
@@ -224,34 +263,40 @@ def load_done_uids():
     return done
 
 
-def triage_alert(record: dict, flow: dict, seq: int) -> dict:
+def triage_alert(record: dict, flow: dict, seq: int, mem, run_id: str = "") -> dict:
     """
     Triage one alert and return the verdict row to be persisted.
 
-    The two Phase 2 seams are marked below. Nothing else in this
-    function changes when Arm B is built.
+    `mem` is the memory layer for this run. Under "off" it retrieves
+    nothing, so the prompt is the Arm A prompt byte for byte. The
+    write-back happens in main(), after the row is durably logged
+    (03-write-path.md, ordering).
     """
 
-    # -- Phase 2 seam: retrieve precedent from the memory store here. --
+    # -- Phase 2 seam 1: retrieve precedent. [] under "off". --
+    cases = mem.retrieve(record, flow)
 
-    prompt = triage_prompt.render(record, flow)
+    prompt = triage_prompt.render(record, flow, cases)
 
-    raw_text, latency_ms = llm_client.call_groq(
-        prompt,
-        max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
-        reasoning_effort=config.TRIAGE_REASONING_EFFORT,
-    )
+    # The precedent block's size, as the difference between this prompt
+    # and the same alert's prompt with no precedent (04-read-path.md,
+    # token accounting). Characters, not tokens: the LLM's tokenizer is
+    # not available offline, and a count from a different tokenizer
+    # would be a guess dressed as a measurement.
+    precedent_chars = len(prompt) - len(triage_prompt.render(record, flow))
+
+    raw_text, latency_ms = llm_client.call_triage_llm(prompt)
 
     verdict = triage_prompt.parse_llm_response(raw_text)
-
-    # -- Phase 2 seam: write this case back to the memory store here. --
 
     multiclass = record["multiclass"]
     alert = record["alert"]
 
     return {
         "uid": record["uid"],
-        "arm": "baseline",
+        "arm": "baseline" if mem.condition == "off" else f"memory-{mem.condition}",
+        "memory_condition": mem.condition,
+        "run_id": run_id,
         "seq": seq,
         "detector_label": multiclass["prediction"],
         "detector_score": multiclass["confidence"],
@@ -261,17 +306,19 @@ def triage_alert(record: dict, flow: dict, seq: int) -> dict:
         "attack_category": verdict["attack_category"],
         "confidence": verdict["confidence"],
         "rationale_summary": verdict["rationale_summary"],
-        # Arm A retrieves nothing and stores nothing. These stay empty
-        # for every baseline row, by construction rather than by policy.
-        "precedent_used": "",
-        "precedent_count": 0,
-        "model_id": config.GROQ_MODEL,
+        # Arm A retrieves nothing, so these stay empty for every
+        # baseline row, by construction rather than by policy.
+        "precedent_used": ",".join(case.case_id for case in cases),
+        "precedent_count": len(cases),
+        "precedent_similarities": [round(case.similarity, 6) for case in cases],
+        "precedent_chars": precedent_chars,
+        "model_id": llm_client.triage_model_id(),
         "latency_ms": round(latency_ms, 1),
         "triaged_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
-def append_verdict(row: dict) -> None:
+def append_verdict(row: dict, verdicts_path) -> None:
     """
     Append one verdict and flush immediately.
 
@@ -280,8 +327,28 @@ def append_verdict(row: dict) -> None:
     instead of the whole run.
     """
 
-    with open(config.VERDICTS_PATH, "a", encoding="utf-8") as f:
+    with open(verdicts_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
+
+
+def write_back(mem, record: dict, flow: dict, row: dict) -> None:
+    """
+    -- Phase 2 seam 2: store this case. A no-op under "off". --
+
+    Built from the logged row rather than the in-flight verdict, so the
+    same call replays a logged verdict on resume and stores identical
+    content -- writes are idempotent, so replaying one already stored
+    is a no-op.
+    """
+
+    verdict = {
+        key: row[key]
+        for key in ("verdict", "attack_category", "confidence", "rationale_summary")
+    }
+
+    precedent = [c for c in row.get("precedent_used", "").split(",") if c]
+
+    mem.write(record, flow, verdict, row["seq"], precedent)
 
 
 def main():
@@ -294,11 +361,24 @@ def main():
         help="Triage at most N alerts this run (default: all untriaged)"
     )
     parser.add_argument(
+        "--memory", choices=("off", "self", "oracle"), default="off",
+        help="Memory condition: off = Arm A (default), self / oracle = Arm B"
+    )
+    parser.add_argument(
+        "--run-id", default=None,
+        help="Scope this run's output to artifacts/runs/<run-id>/ and "
+             "triage every alert in stream order. Required unless "
+             "--memory off."
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print the prompt for the first pending alert and exit "
              "without calling the API"
     )
     args = parser.parse_args()
+
+    if args.memory != "off" and not args.run_id:
+        parser.error("--run-id is required when --memory is not off")
 
     if not config.LIVE_RESULTS_PATH.exists():
         print(
@@ -339,15 +419,20 @@ def main():
         )
         sys.exit(1)
 
-    sample = select_sample(alerts)
+    if args.run_id:
+        verdicts_path = Path(paths.run_dir(args.run_id)) / "triage_verdicts.jsonl"
+        sample = alerts
+    else:
+        verdicts_path = config.VERDICTS_PATH
+        sample = select_sample(alerts)
 
-    done = load_done_uids()
+    done = load_done_uids(verdicts_path)
     pending = [a for a in sample if a["uid"] not in done]
 
     print(f"{len(alerts)} alerts available, {len(sample)} in sample, "
           f"{len(done)} already triaged, {len(pending)} pending")
 
-    remaining_budget = llm_client.budget_remaining()
+    remaining_budget = llm_client.budget_remaining(config.TRIAGE_PROVIDER)
     print(f"Daily request budget remaining: {remaining_budget}")
 
     if remaining_budget < len(pending):
@@ -365,6 +450,7 @@ def main():
             print("Nothing pending -- no prompt to show.")
             return
 
+        # A dry run never opens a store: retrieving would log to it.
         print("\n" + "=" * 70)
         print(triage_prompt.render(pending[0], flows[pending[0]["uid"]]))
         print("=" * 70)
@@ -379,11 +465,33 @@ def main():
         pending = pending[: args.limit]
         print(f"Limited to {len(pending)} this run")
 
-    config.VERDICTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    verdicts_path.parent.mkdir(parents=True, exist_ok=True)
 
     # seq is the alert's position in the full stream, not in this batch,
     # so it stays stable across resumed runs.
     position = {a["uid"]: i for i, a in enumerate(alerts)}
+
+    mem = open_memory(args.run_id or "arm-a", args.memory)
+
+    # Replay every logged verdict into memory. A crash between logging a
+    # verdict and storing it would otherwise leave a gap in memory that
+    # no later alert could see; replaying one already stored is a no-op.
+    if args.memory != "off":
+
+        by_uid = {a["uid"]: a for a in alerts}
+        done_rows = sorted(load_done_rows(verdicts_path).values(), key=lambda r: r["seq"])
+
+        for row in done_rows:
+            write_back(mem, by_uid[row["uid"]], flows[row["uid"]], row)
+
+        print(f"Memory store {paths.memory_store(args.run_id)}: "
+              f"{len(done_rows)} logged verdicts replayed")
+
+    pace = (
+        config.GEMINI_PACE_SECONDS
+        if config.TRIAGE_PROVIDER == "gemini"
+        else config.TRIAGE_PACE_SECONDS
+    )
 
     written = 0
     agreed = 0
@@ -399,10 +507,10 @@ def main():
             # being rejected, but does not spend a request from the
             # daily budget to learn that.
             if index:
-                time.sleep(config.TRIAGE_PACE_SECONDS)
+                time.sleep(pace)
 
             try:
-                row = triage_alert(record, flows[uid], position[uid])
+                row = triage_alert(record, flows[uid], position[uid], mem, args.run_id or "")
             except llm_client.DailyBudgetExhausted as e:
                 print(f"\n{e}", file=sys.stderr)
                 print(
@@ -424,7 +532,8 @@ def main():
                 )
                 sys.exit(1)
 
-            append_verdict(row)
+            append_verdict(row, verdicts_path)
+            write_back(mem, record, flows[uid], row)
             written += 1
 
             if row["attack_category"] == row["detector_label"]:
@@ -436,14 +545,19 @@ def main():
                 f"[{written}/{len(pending)}] {uid} "
                 f"detector={row['detector_label']} {flag} "
                 f"llm={row['attack_category']} "
-                f"verdict={row['verdict']} conf={row['confidence']}"
+                f"verdict={row['verdict']} conf={row['confidence']} "
+                f"precedent={row['precedent_count']}"
             )
 
     except KeyboardInterrupt:
         print(f"\nStopped by user after {written} verdicts.", file=sys.stderr)
         sys.exit(130)
 
-    print(f"\nWrote {written} verdicts to {config.VERDICTS_PATH}")
+    print(f"\nWrote {written} verdicts to {verdicts_path}")
+
+    if mem.skipped_writes:
+        print(f"WARNING: {mem.skipped_writes} memory writes failed and were "
+              "skipped -- see writes.jsonl", file=sys.stderr)
 
     if written:
         rate = agreed / written

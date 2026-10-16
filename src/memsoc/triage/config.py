@@ -96,6 +96,11 @@ REPORTS_TO_KEEP = 10
 # 1200 tokens, and prompt + max_tokens must stay under the 8000 TPM
 # quota or every request is rejected outright. That leaves roughly one
 # request per minute.
+#
+# Since 2026-10-16 the same cap applies to EVERY triage model, Gemini
+# included (it was 16384 there), so no model is given more room to think
+# than another. 6000 is the most Groq's 8000 TPM allows beside the
+# largest memory-arm prompt (~1850 tokens).
 TRIAGE_MAX_RESPONSE_TOKENS = 6000
 
 # The triage path sends NO reasoning_effort parameter, which is what the
@@ -141,7 +146,10 @@ DAILY_REQUEST_RESERVE = 100
 # per minute guarantees a 429 -- and a 429 costs a request from the
 # daily budget while returning nothing. Measured over one run, retries
 # cost 33 requests to obtain 14 verdicts.
-TRIAGE_PACE_SECONDS = 55.0
+#
+# 60 since 2026-10-16: prompt + the 6000-token reservation is 7100-7850
+# tokens, so one request a minute is all the 8000 TPM allows.
+TRIAGE_PACE_SECONDS = 60.0
 
 # Stratified subsample of the alerts, so a run fits in about an hour
 # instead of three at the ~1 alert/minute the TPM quota allows.
@@ -176,3 +184,90 @@ REQUEST_BUDGET_PATH = Path(paths.REQUEST_BUDGET)
 
 # The evaluation oracle. score_verdicts.py is the only reader.
 GROUND_TRUTH_PATH = Path(paths.GROUND_TRUTH)
+
+# ----------------------------------------------------------------------
+# The per-alert triage LLM (both arms).
+#
+# decisions.md B5 (answered 2026-10-14): gemini-3.8-flash at temperature
+# 0. The provider is chosen here, once, and triage_runner.py calls the
+# same function for every arm -- the LLM is held constant by
+# construction. The aggregate report path above stays on Groq.
+#
+# "groq" remains selectable so the 2026-08-30 pilot setup can still be
+# reproduced, but a comparison between arms is only valid when both ran
+# under the same provider and model.
+#
+# TRIAGE_PROVIDER and TRIAGE_MODEL in the environment select both for one
+# run; protocol_run.py sets them from its --model flag, so testers never
+# type a model id (docs/status/testing-protocol-v1.md).
+# ----------------------------------------------------------------------
+TRIAGE_PROVIDER = os.environ.get("TRIAGE_PROVIDER", "gemini")
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# The decided model is the default. GEMINI_MODEL in the environment
+# overrides it for one run -- used 2026-10-14, when every Flash model was
+# returning 503 "high demand" and the run went to gemini-3.5-flash-lite
+# (BL-117). The model actually called is recorded in every verdict row,
+# so runs under different models can never be mistaken for each other.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
+GEMINI_API_URL = f"{GEMINI_API_BASE}{GEMINI_MODEL}:generateContent"
+GEMINI_TEMPERATURE = 0
+
+# Kept for any non-triage Gemini use. The triage path uses
+# TRIAGE_MAX_RESPONSE_TOKENS for every provider (below).
+GEMINI_MAX_RESPONSE_TOKENS = 16384
+
+# The model the triage path calls. Defaults to the provider's own setting,
+# so a run that sets neither variable behaves exactly as before.
+TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL") or (
+    GEMINI_MODEL if TRIAGE_PROVIDER == "gemini" else GROQ_MODEL
+)
+
+# Ask the provider for a JSON-only answer (Gemini responseMimeType, Groq
+# response_format json_object). The same setting for every triage model,
+# so no model gets help formatting that another does not.
+TRIAGE_JSON_MODE = True
+
+# ----------------------------------------------------------------------
+# Free-tier requests per day, PER MODEL (BL-121). Read from AI Studio's
+# rate-limit page and Groq's published limits on 2026-10-16. The client
+# counts each model separately against its own line; the provider's 429
+# stays the authority. Unlisted models get the most restrictive limit seen.
+# ----------------------------------------------------------------------
+DAILY_REQUEST_LIMITS = {
+    "gemma-4-26b-a4b-it": 14400,
+    "gemma-4-31b-it": 14400,
+    "gemini-3.5-flash-lite": 500,
+    "gemini-3.1-flash-lite": 500,
+    "openai/gpt-oss-20b": 1000,
+    "qwen/qwen3.8-27b": 1000,
+}
+DEFAULT_DAILY_REQUEST_LIMIT = 20
+
+# Measured 2026-10-15 from the provider's own 429 (BL-117): the free tier
+# allows 500 generate requests per day PER MODEL
+# (generate_content_free_tier_requests, gemini-3.5-flash-lite), and a
+# per-minute limit that returned a handful of retryable 429s at three
+# concurrent runs paced 6 s apart. Measured 2026-10-16 the same way:
+# gemini-3.8-flash allows only 20 requests per day on the free tier.
+# Other models' limits are in DAILY_REQUEST_LIMITS above.
+# Gemini's per-day 429 stays the authority and stops every run cleanly.
+# Arms are run side by side so that the stop leaves them all on the same
+# prefix of the stream -- the purpose the Groq-era reserve served.
+#
+# GEMINI_DAILY_REQUEST_LIMIT is no longer read by the client; each model's
+# own line in DAILY_REQUEST_LIMITS is (BL-121). Kept as the record of the
+# figure the 2026-10-15 run was budgeted under.
+GEMINI_DAILY_REQUEST_LIMIT = 500
+GEMINI_DAILY_REQUEST_RESERVE = 20
+GEMINI_PACE_SECONDS = 6.0
+
+GEMINI_REQUEST_BUDGET_PATH = Path(paths.GEMINI_REQUEST_BUDGET)
+
+# Gemini answers 503 "model is currently experiencing high demand" during
+# load spikes (observed 2026-10-14). Transient, so retried with a growing
+# wait -- but bounded: a persistent 503 stops the run like any other
+# error, and nothing is defaulted.
+SERVER_ERROR_MAX_RETRIES = 6
+SERVER_ERROR_BASE_WAIT = 15.0
