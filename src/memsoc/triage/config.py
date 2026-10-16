@@ -191,6 +191,17 @@ GROUND_TRUTH_PATH = Path(paths.GROUND_TRUTH)
 # ----------------------------------------------------------------------
 TRIAGE_PROVIDER = "gemini"
 
+# Which wording of the triage prompt produced a verdict. Written into
+# every verdict row so that verdicts from different wordings can never be
+# pooled into one comparison (BL-018, BL-106).
+#
+# Bump it whenever triage_prompt.render() output changes. The value is
+# tied to a hash of the rendered Arm A prompt in
+# tests/test_triage_memory.py, so a prompt edit without a bump fails the
+# tests. "label-hypothesis" is the current framing: the detector's label
+# is shown as a hypothesis the analyst may overrule (BL-018).
+PROMPT_VARIANT = "label-hypothesis-v1"
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # The decided model is the default. GEMINI_MODEL in the environment
 # overrides it for one run -- used 2026-10-14, when every Flash model was
