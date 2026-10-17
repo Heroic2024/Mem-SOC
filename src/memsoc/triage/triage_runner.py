@@ -619,7 +619,7 @@ def main():
                 "\nWARNING: the LLM echoed the detector's category on every "
                 "alert.\nIf this holds over the full run, category accuracy "
                 "measures nothing --\nboth arms would tie at the detector's "
-                "own 88.1%. Review the prompt in\ntriage_prompt.py before "
+                "own accuracy. Review the prompt in\ntriage_prompt.py before "
                 "spending the rest of the request budget."
             )
 

@@ -96,7 +96,13 @@ REPORTS_TO_KEEP = 10
 # 1200 tokens, and prompt + max_tokens must stay under the 8000 TPM
 # quota or every request is rejected outright. That leaves roughly one
 # request per minute.
-TRIAGE_MAX_RESPONSE_TOKENS = 6000
+#
+# 2026-10-17: lowered to 1000 for qwen/qwen3.8-27b (GROQ_TRIAGE_MODEL),
+# which answers the triage prompt without visible reasoning: a probe on
+# the first stream alert used 1135 prompt + 122 completion tokens. 1000
+# is 8x that answer, and leaves room for ~3 requests a minute under the
+# same 8000 TPM. A truncated answer is still retried, never defaulted.
+TRIAGE_MAX_RESPONSE_TOKENS = 1000
 
 # The triage path sends NO reasoning_effort parameter, which is what the
 # 2026-08-30 baseline run did. The report path above sets "low"; adopting
@@ -141,7 +147,12 @@ DAILY_REQUEST_RESERVE = 100
 # per minute guarantees a 429 -- and a 429 costs a request from the
 # daily budget while returning nothing. Measured over one run, retries
 # cost 33 requests to obtain 14 verdicts.
-TRIAGE_PACE_SECONDS = 55.0
+#
+# 2026-10-17: 40 s for qwen/qwen3.8-27b at TRIAGE_MAX_RESPONSE_TOKENS =
+# 1000, about 2,100-2,600 counted tokens a request. Sized so that TWO runs
+# side by side on one key (Arm A and Arm B-self, sharing its 8000 TPM)
+# send about 3 requests a minute between them.
+TRIAGE_PACE_SECONDS = 40.0
 
 # Stratified subsample of the alerts, so a run fits in about an hour
 # instead of three at the ~1 alert/minute the TPM quota allows.
@@ -185,11 +196,17 @@ GROUND_TRUTH_PATH = Path(paths.GROUND_TRUTH)
 # same function for every arm -- the LLM is held constant by
 # construction. The aggregate report path above stays on Groq.
 #
-# "groq" remains selectable so the 2026-08-30 pilot setup can still be
-# reproduced, but a comparison between arms is only valid when both ran
-# under the same provider and model.
+# 2026-10-17: switched by the team to Groq, qwen/qwen3.8-27b, temperature
+# 0 (BL-121) -- gemini-3.8-flash stayed unreachable and the free tier
+# could not carry the run (BL-117). Gemini remains selectable. A
+# comparison between arms is only valid when both ran under the same
+# provider and model; every verdict row records model_id.
 # ----------------------------------------------------------------------
-TRIAGE_PROVIDER = "gemini"
+TRIAGE_PROVIDER = "groq"
+
+# The per-alert triage model on Groq. Separate from GROQ_MODEL, which the
+# aggregate report path uses, so changing one never changes the other.
+GROQ_TRIAGE_MODEL = "qwen/qwen3.8-27b"
 
 # Which wording of the triage prompt produced a verdict. Written into
 # every verdict row so that verdicts from different wordings can never be

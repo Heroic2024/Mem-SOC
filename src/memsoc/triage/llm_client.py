@@ -206,9 +206,12 @@ _EFFORT_UNSET = object()
 
 
 def call_groq(prompt: str, max_tokens: int = None,
-              reasoning_effort=_EFFORT_UNSET):
+              reasoning_effort=_EFFORT_UNSET, model: str = None):
     """
     Send `prompt` to Groq and return (response_text, latency_ms).
+
+    `model` defaults to config.GROQ_MODEL, the report model. The triage
+    path passes config.GROQ_TRIAGE_MODEL so the two can differ.
 
     `reasoning_effort` defaults to config.GROQ_REASONING_EFFORT, which the
     aggregate report path uses. Pass None to omit the parameter entirely,
@@ -246,7 +249,7 @@ def call_groq(prompt: str, max_tokens: int = None,
     }
 
     payload = {
-        "model": config.GROQ_MODEL,
+        "model": config.GROQ_MODEL if model is None else model,
         "temperature": config.TEMPERATURE,
         "max_tokens": (
             config.MAX_RESPONSE_TOKENS if max_tokens is None else max_tokens
@@ -574,7 +577,7 @@ def triage_model_id() -> str:
     if config.TRIAGE_PROVIDER == "gemini":
         return config.GEMINI_MODEL
 
-    return config.GROQ_MODEL
+    return config.GROQ_TRIAGE_MODEL
 
 
 def call_triage_llm(prompt: str):
@@ -592,4 +595,5 @@ def call_triage_llm(prompt: str):
         prompt,
         max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
         reasoning_effort=config.TRIAGE_REASONING_EFFORT,
+        model=config.GROQ_TRIAGE_MODEL,
     )

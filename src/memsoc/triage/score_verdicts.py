@@ -39,10 +39,9 @@ from collections import Counter, defaultdict
 
 from memsoc.triage import config
 
-# The detector's own category accuracy over the same alerts, measured
-# before any LLM ran. Reported alongside the LLM's so the comparison is
-# visible rather than something the reader has to remember.
-DETECTOR_CATEGORY_BASELINE = 0.881
+# Verdict rows written before prompt_variant existed were produced by the
+# first prompt wording (BL-120).
+LEGACY_PROMPT_VARIANT = "label-hypothesis-v1"
 
 
 def read_ground_truth(path):
@@ -210,10 +209,17 @@ def score(verdicts, ground_truth):
     }
 
 
-def report(s, arm, show_errors):
+def prompt_variants(verdicts):
+    """The prompt wordings present in a verdict file (BL-120)."""
+
+    return sorted({row.get("prompt_variant", LEGACY_PROMPT_VARIANT) for row in verdicts})
+
+
+def report(s, arm, show_errors, prompt_variant=LEGACY_PROMPT_VARIANT):
 
     print(f"\n{'=' * 62}")
     print(f"  Phase 1 scoring -- arm: {arm} -- {s['n']} alerts scored")
+    print(f"  prompt variant: {prompt_variant}  (compare arms only within one variant)")
     print("=" * 62)
 
     if s["unmatched"]:
@@ -240,7 +246,6 @@ def report(s, arm, show_errors):
     print(f"   LLM category accuracy      {s['cat_accuracy']:.3f}")
     print(f"   detector, same alerts      {s['det_accuracy']:.3f}")
     print(f"   difference                 {delta:+.3f}  ({arrow} the detector)")
-    print(f"   pre-run detector baseline  {DETECTOR_CATEGORY_BASELINE:.3f}")
 
     if s["cat_errors"] and show_errors:
         print("\n   category errors (expected -> LLM said):")
@@ -309,12 +314,25 @@ def main():
         )
         sys.exit(1)
 
+    # Verdicts from different prompt wordings are not comparable, so a
+    # file that mixes them is refused rather than scored as one arm.
+    variants = prompt_variants(verdicts)
+
+    if len(variants) > 1:
+        print(
+            f"{args.verdicts} mixes prompt variants {variants}.\n"
+            "Verdicts from different prompt wordings cannot be scored "
+            "together (BL-120).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     ground_truth = read_ground_truth(config.GROUND_TRUTH_PATH)
 
     arms = {row.get("arm", "unknown") for row in verdicts}
     arm = arms.pop() if len(arms) == 1 else f"MIXED {sorted(arms)}"
 
-    report(score(verdicts, ground_truth), arm, args.show_errors)
+    report(score(verdicts, ground_truth), arm, args.show_errors, variants[0])
 
 
 if __name__ == "__main__":

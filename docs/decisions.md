@@ -367,6 +367,8 @@ the same time window, and model drift listed as a limitation.
 
 **Clarified 2026-10-14:** `gemini-3.8-flash` on the Google Gemini API, temperature **0**, thinking level left at the model's default. It is used for per-alert triage in every arm; reports stay on Groq. Implemented in `src/memsoc/triage/config.py` and `llm_client.call_triage_llm()`. BL-099 is closed.
 
+**Changed 2026-10-17 (Person 2):** triage moves to **Groq, `qwen/qwen3.8-27b`, temperature 0**, with no reasoning parameter sent. `gemini-3.8-flash` stayed unreachable and the Gemini free tier could not carry the run (BL-117). The report path keeps its own Groq model (`GROQ_MODEL`), so it does not change. Verdicts made on any Gemini model, including the 2026-10-15 `gemini-3.5-flash-lite` runs, are not comparable with Qwen verdicts and must not be pooled. See BL-121.
+
 --
 
 # Part C — Answer before building the memory layer
