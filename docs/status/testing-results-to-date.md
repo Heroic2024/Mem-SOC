@@ -28,7 +28,7 @@
 6. **The next step is a choice of free model.**
    - Four free models that have not yet been tried answer through our existing code with no changes: **Gemma 4 26B-A4B, Gemma 4 31B, Gemini 3.6 Flash, Gemini 3.1 Flash-Lite**.
    - Their daily limits are not published. They are shown only on the AI Studio rate-limit page, which is a one-minute check. Section 8 lays out the options.
-   - **Decided later the same day:** three testers run three free models (gpt-oss-20b and qwen3.8-27b on Groq, Gemma 4 26B on AI Studio) on the first 165 alerts, all three arms, under [`testing-protocol-v1.md`](./testing-protocol-v1.md) (decisions.md B5, BL-122).
+   - **Decided later the same day:** three testers run three free models (gpt-oss-20b and qwen3.8-27b on Groq, Gemma 4 26B on AI Studio) on the first 165 alerts, all three arms, under [`testing-protocol-v2.md`](./testing-protocol-v2.md) (decisions.md B5, BL-122).
    - **Update, same day (§7a–7b):** limits were read from AI Studio and three models were checked on 5 real alerts. **Only Gemma 4 26B is usable and off the floor** (14,400/day, ~45 s per alert, 3/5 attacks escalated). Gemma 4 31B is too slow and overloaded. 3.1 Flash Lite is at the floor (0/5). Our own request counter would cap any Gemma run at 480/day (BL-121).
 
 ---

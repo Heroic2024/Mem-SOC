@@ -1,8 +1,10 @@
-# Test Protocol v1 — Memory Layer, Three LLMs
+# Test Protocol v2 — Memory Layer, Three LLMs
 
 > **Who this is for:** the three testers, and the AI agent each of them uses. **Follow it exactly, top to bottom.**
 >
-> **Owner:** Aryan (memory layer). **Protocol version:** `p1`. **Code version:** git tag `memsoc-protocol-v1`. **Written:** 2026-10-16.
+> **Owner:** Aryan (memory layer). **Protocol version:** `p2`. **Code version:** git tag `memsoc-protocol-v2`. **Written:** 2026-10-17.
+>
+> **Replaces Test Protocol v1.** One parser fix; nothing else about the test changed. See §0 *What changed from v1* before you start, and re-do §3.2 if you already cloned.
 >
 > **If anything happens that this document does not cover, stop and message Aryan. Do not improvise, do not "fix" code, do not retry in a different way.**
 
@@ -22,6 +24,35 @@ You are helping a tester run a fixed scientific experiment. The experiment is on
 
 ---
 
+## 0. What changed from v1 (read this, then follow the rest as written)
+
+**One line of code changed.** A model that puts its single verdict inside a
+JSON array -- `[ { "verdict": ... } ]` instead of `{ "verdict": ... }` -- now
+has that array unwrapped, and the verdict inside is validated exactly as
+before. Everything else is identical: same alerts, same order, same arms, same
+prompt, same settings, same data, same packages, same scoring.
+
+**Why:** on 2026-10-17 a v1 run of `gemma-4-26b-a4b-it` stopped at verdict 383
+of 495 because the model wrapped one verdict in an array, and at temperature 0
+all three attempts came back the same way (backlog **BL-125**). It is a
+transport wrapper, not a different answer, and the run could not continue
+without this fix.
+
+**Does it change any verdict?** No. An answer that parsed under v1 parses
+identically under v2 -- the new branch is only reached by answers v1 rejected
+outright. The unwrapping is also narrow: an empty array, several verdicts, or
+an array of anything other than one object still fails, exactly as before.
+
+**What you must do:**
+
+| If you | Then |
+|---|---|
+| have not started | nothing special; follow this document from §1 |
+| already cloned at `memsoc-protocol-v1` | re-do §3.2 and check out `memsoc-protocol-v2` |
+| have verdicts from a v1 run | they are **not** part of this test. Leave them on disk, do not delete them, and tell Aryan how many you had. Your v2 run starts from zero under new `-p2` run IDs, so nothing is overwritten |
+
+---
+
 ## 1. What this test is, and your role
 
 **The question:** when an LLM triages security alerts, does giving it a memory of similar past alerts make it more accurate? Each tester measures this for one LLM.
@@ -30,9 +61,9 @@ The program triages the **same first 165 alerts** three times, alert by alert:
 
 | Arm | What the LLM sees | Run ID it writes |
 |---|---|---|
-| **A** | the alert only (no memory) | `armA-<tag>-p1` |
-| **B-self** | the alert + its 3 most similar past alerts, with **the LLM's own earlier verdicts** | `bself-<tag>-p1` |
-| **B-oracle** | the alert + the same 3 past alerts, with **the correct answers** | `boracle-<tag>-p1` |
+| **A** | the alert only (no memory) | `armA-<tag>-p2` |
+| **B-self** | the alert + its 3 most similar past alerts, with **the LLM's own earlier verdicts** | `bself-<tag>-p2` |
+| **B-oracle** | the alert + the same 3 past alerts, with **the correct answers** | `boracle-<tag>-p2` |
 
 **Your role — find your row and use exactly these values:**
 
@@ -65,7 +96,7 @@ The program waits for the daily allowance by itself; you only keep it running (�
 
 | Item | Value | Enforced by |
 |---|---|---|
-| Code | git tag `memsoc-protocol-v1` | `--preflight` checks the checkout and that `src\`, `tests\`, `requirements\` are unmodified |
+| Code | git tag `memsoc-protocol-v2` | `--preflight` checks the checkout and that `src\`, `tests\`, `requirements\` are unmodified |
 | Data | `artifacts\memsoc-protocol-v1-data.zip`, included in the repository at the tag: stream v2, 120,000 flows, seed 42, 1,135 detector alerts | `--preflight` checks three SHA-256 hashes |
 | Alerts | the **first 165** in stream order | fixed in code; preflight checks their identity hash |
 | Arms and order | for each alert: A, then B-self, then B-oracle | fixed in code |
@@ -102,7 +133,7 @@ py -3.13 --version
 cd $env:USERPROFILE
 git clone https://github.com/Heroic2024/Mem-SOC.git
 cd Mem-SOC
-git checkout memsoc-protocol-v1
+git checkout memsoc-protocol-v2
 ```
 
 **Expected:**
@@ -137,7 +168,7 @@ Get-ChildItem artifacts, artifacts\model_outputs
 - `artifacts\model_outputs` contains `live_results.jsonl` (~30.6 MB).
 - Leave the zip where it is. Do not delete or move it.
 
-If `artifacts\memsoc-protocol-v1-data.zip` is missing, you are not on the tag: redo the `git checkout memsoc-protocol-v1` line of §3.2.
+If `artifacts\memsoc-protocol-v1-data.zip` is missing, you are not on the tag: redo the `git checkout memsoc-protocol-v2` line of §3.2.
 
 For reference, the zip's SHA-256 is `233567572d8de10446c9aac6562f96b085cfb8c19ddad8a35b86dadd07843376` (`Get-FileHash artifacts\memsoc-protocol-v1-data.zip`). Preflight checks the extracted files themselves.
 
@@ -222,7 +253,7 @@ In a PowerShell window with the three setup lines from §3.6 already run:
 & $py -m memsoc.triage.protocol_run --model <MODEL> --status
 ```
 
-**Expected:** three lines, `armA-<tag>-p1  N of 165 verdicts`, then the same for `bself` and `boracle`. The three numbers differ by at most 1.
+**Expected:** three lines, `armA-<tag>-p2  N of 165 verdicts`, then the same for `bself` and `boracle`. The three numbers differ by at most 1.
 
 - **If the window was closed, the PC restarted or slept, or you pressed Ctrl-C:** open PowerShell, run the three lines from §3.6, and run the §4.1 command again.
   - It resumes exactly where it stopped. Nothing is lost or repeated.
@@ -281,10 +312,10 @@ A `WARN` on `retrieval matches the reference machine` is acceptable: package any
 ```
 
 **Expected:** it re-runs the verification, then prints
-`PACKAGED: ...\Mem-SOC\artifacts\memsoc-p1-<tag>-results.zip  (N MB). Send this file to Aryan.`
+`PACKAGED: ...\Mem-SOC\artifacts\memsoc-p2-<tag>-results.zip  (N MB). Send this file to Aryan.`
 
 Send Aryan:
-1. **The zip file:** `artifacts\memsoc-p1-<tag>-results.zip`. It contains all three runs, both memory stores, each `run_config.json` and the full log.
+1. **The zip file:** `artifacts\memsoc-p2-<tag>-results.zip`. It contains all three runs, both memory stores, each `run_config.json` and the full log.
 2. **The full console output of `--verify`,** pasted into the message.
 
 Then you are done. **Do not delete** the `Mem-SOC` folder until Aryan confirms receipt.
@@ -297,7 +328,7 @@ Then you are done. **Do not delete** the `Mem-SOC` folder until Aryan confirms r
 |---|---|
 | `FAIL Python 3.13` | Install Python 3.13 (§3.1), then redo §3.3 to recreate the environment with `py -3.13`. |
 | `FAIL chromadb==...`, `torch==...` or any other package line | The environment was built differently. Run `Remove-Item -Recurse -Force "$env:USERPROFILE\.venvs\memsoc-memory"` (this only removes the Python environment, never results), then redo §3.3 exactly. |
-| `FAIL git checkout is the protocol tag` | `cd $env:USERPROFILE\Mem-SOC` then `git checkout memsoc-protocol-v1`. If git refuses, stop and message Aryan. |
+| `FAIL git checkout is the protocol tag` | `cd $env:USERPROFILE\Mem-SOC` then `git checkout memsoc-protocol-v2`. If git refuses, stop and message Aryan. |
 | `FAIL no local changes to src/, tests/, requirements/` | Someone edited code. **Do not run.** Send Aryan the output of `git status` and `git diff --stat`. |
 | `FAIL data file ...` (missing or wrong hash) | Re-download the zip and redo §3.4. If it still fails, message Aryan. |
 | `FAIL 1135 detector alerts`, `first 165 alerts`, `Arm A prompt for alert 0` or `every alert joins its flow` | Wrong data or code. Redo §3.2 and §3.4. If it persists, message Aryan. |
@@ -346,14 +377,19 @@ Aryan analyses all three models together after receiving the zips. Every alert i
 
 ## 10. For Aryan only — release checklist and afterwards (testers skip this)
 
-**Done 2026-10-16:**
-- Code, this document and the data zip are committed on branch `aryan`.
-- The tag `memsoc-protocol-v1` is pushed.
+**Done 2026-10-16 (v1):**
+- Code, the v1 document and the data zip were committed on branch `aryan`, and the tag `memsoc-protocol-v1` was pushed.
 - The Gemma smoke run (2 alerts × 3 arms) passed preflight, verify and package.
 
+**Done 2026-10-17 (v2):**
+- The parser fix, this document and the version bump are committed on branch `aryan`; the tag `memsoc-protocol-v2` is cut (§0, BL-125).
+- Tester M's v1 run reached 382 of 495 verdicts (arms at 128 / 127 / 127) before the stop. Those runs stay on disk under their `-p1` ids, are superseded, and must not be pooled with v2 results.
+- `tests/test_triage_memory.py` `VerdictParsingTests` pins the new parse behaviour: 25 triage tests and 16 memory tests pass.
+
 **Still to do before testers start:**
-1. Add the three testers as collaborators on the private GitHub repo `Heroic2024/Mem-SOC`.
-2. Send each tester this document's path in the repo and their row from §1.
+1. Push the tag `memsoc-protocol-v2`.
+2. Add the three testers as collaborators on the private GitHub repo `Heroic2024/Mem-SOC`.
+3. Send each tester this document's path in the repo and their row from §1. Anyone who already cloned v1 re-does §3.2.
 
 **The Groq check is delegated to Tester G.** Aryan could not create a Groq key (BL-120), so G's first 9 verdicts serve as the check (§4.4). When G's checkpoint arrives, confirm three things:
 - Nine verdict lines, with no `413`, `Request too large` or `json_validate_failed`. This shows JSON mode and the 6,000-token cap fit Groq's 8K TPM.

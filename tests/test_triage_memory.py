@@ -85,6 +85,35 @@ def _answer(text, finish="STOP"):
 VERDICT_JSON = json.dumps(FIXTURE_VERDICT)
 
 
+class VerdictParsingTests(unittest.TestCase):
+    """
+    A verdict the model wrapped in an array is still that verdict.
+    BL-125: gemma-4-26b-a4b-it did this on 1 alert in 128 and, at
+    temperature 0, on all three attempts, which stopped a protocol run.
+    """
+
+    def test_a_single_verdict_in_an_array_is_unwrapped(self):
+        parsed = triage_prompt.parse_llm_response(json.dumps([FIXTURE_VERDICT]))
+        self.assertEqual(parsed["verdict"], FIXTURE_VERDICT["verdict"])
+        self.assertEqual(parsed["attack_category"], FIXTURE_VERDICT["attack_category"])
+
+    def test_unwrapping_changes_nothing_a_bare_object_would_give(self):
+        self.assertEqual(
+            triage_prompt.parse_llm_response(json.dumps([FIXTURE_VERDICT])),
+            triage_prompt.parse_llm_response(VERDICT_JSON),
+        )
+
+    def test_a_wrapped_verdict_is_still_validated(self):
+        bad = dict(FIXTURE_VERDICT, verdict="probably_bad")
+        with self.assertRaises(ValueError):
+            triage_prompt.parse_llm_response(json.dumps([bad]))
+
+    def test_an_array_that_is_not_one_verdict_still_fails(self):
+        for raw in ("[]", json.dumps([FIXTURE_VERDICT, FIXTURE_VERDICT]), '["true_positive"]'):
+            with self.subTest(raw=raw[:40]), self.assertRaises(ValueError):
+                triage_prompt.parse_llm_response(raw)
+
+
 class PrecedentSectionTests(unittest.TestCase):
 
     def test_no_precedent_is_the_arm_a_prompt_byte_for_byte(self):
@@ -411,7 +440,8 @@ class ProtocolRunTests(unittest.TestCase):
         ])
 
         for prefix in ("armA", "bself", "boracle"):
-            path = Path(self.tmp.name) / "runs" / f"{prefix}-gemma4-26b-p1" / "triage_verdicts.jsonl"
+            run_id = f"{prefix}-gemma4-26b-{self.protocol_run.PROTOCOL}"
+            path = Path(self.tmp.name) / "runs" / run_id / "triage_verdicts.jsonl"
             self.assertEqual(len(path.read_text(encoding="utf-8").splitlines()), 2)
 
     def test_a_rerun_resumes_without_repeating_any_verdict(self):

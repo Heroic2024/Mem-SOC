@@ -51,7 +51,7 @@ package under `src/memsoc/` and one directory here.
 | Know what is broken or missing | [`PRODUCT_BACKLOG.md`](./PRODUCT_BACKLOG.md) |
 | See where the project stands | [`status/phase0.md`](./status/phase0.md) |
 | **See every test result so far (Arm A and B together) and the options for the next run** | [`status/testing-results-to-date.md`](./status/testing-results-to-date.md) |
-| **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v1.md`](./status/testing-protocol-v1.md) |
+| **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v2.md`](./status/testing-protocol-v2.md) |
 
 ---
 
@@ -91,7 +91,7 @@ docs/
 ├── status/
 │   ├── phase0.md
 │   ├── testing-results-to-date.md
-│   └── testing-protocol-v1.md
+│   └── testing-protocol-v2.md
 └── archive/                   superseded, banner-marked, do not follow
 ```
 

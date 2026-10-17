@@ -1,5 +1,5 @@
 """
-Test protocol v1 -- the three-arm memory test for one LLM, run the same
+Test protocol v2 -- the three-arm memory test for one LLM, run the same
 way on every tester's machine.
 
     python -m memsoc.triage.protocol_run --model <model> --preflight
@@ -11,7 +11,7 @@ way on every tester's machine.
 <model> is one of gpt-oss-20b, qwen3.8-27b, gemma-4-26b. Everything else
 -- the alerts, the arms, their order, the prompt, the output cap, the
 memory settings -- is fixed here and cannot be changed from the command
-line. Tester instructions: docs/status/testing-protocol-v1.md.
+line. Tester instructions: docs/status/testing-protocol-v2.md.
 
 How this relates to triage_runner.py. Every verdict is produced by the
 same triage_runner.triage_alert() and stored by the same write_back(),
@@ -41,8 +41,8 @@ from pathlib import Path
 
 from memsoc import paths
 
-PROTOCOL = "p1"
-PROTOCOL_TAG = "memsoc-protocol-v1"
+PROTOCOL = "p2"
+PROTOCOL_TAG = "memsoc-protocol-v2"
 PROTOCOL_ALERTS = 165
 
 # --model value -> (provider, exact model id, tag used in run ids).
