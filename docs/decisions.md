@@ -369,7 +369,7 @@ the same time window, and model drift listed as a limitation.
 
 **Clarified 2026-10-14:** `gemini-3.8-flash` on the Google Gemini API, temperature **0**, thinking level left at the model's default. It is used for per-alert triage in every arm; reports stay on Groq. Implemented in `src/memsoc/triage/config.py` and `llm_client.call_triage_llm()`. BL-099 is closed.
 
-**Amended 2026-10-16 — three free models replace `gemini-3.8-flash`.** Its free tier allows 20 requests a day (BL-117), so the full test would take about 170 days. Paid tiers stay ruled out (A4). The test now runs on three free models, one per tester, under the test protocol (v1 on 2026-10-16; **superseded 2026-10-17 by [`docs/status/testing-protocol-v2.md`](./status/testing-protocol-v2.md)**, one parser fix, BL-125):
+**Amended 2026-10-16 — three free models replace `gemini-3.8-flash`.** Its free tier allows 20 requests a day (BL-117), so the full test would take about 170 days. Paid tiers stay ruled out (A4). The test now runs on three free models, one per tester, under the test protocol (v1 on 2026-10-16; **superseded 2026-10-17 by [`docs/status/testing-protocol-v3.md`](./status/testing-protocol-v3.md)**, a parser fix then a per-model output cap, BL-125 and BL-126):
 
 | Tester | Model | Provider |
 |---|---|---|

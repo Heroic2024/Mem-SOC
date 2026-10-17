@@ -21,6 +21,8 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import requests
+
 from memsoc.memory import Case, open_memory
 from memsoc.triage import config, llm_client, triage_prompt, triage_runner
 
@@ -187,6 +189,28 @@ class GeminiClientTests(unittest.TestCase):
 
         self.assertEqual(post.call_count, config.TRUNCATION_MAX_RETRIES + 1)
 
+    def test_gemini_retries_the_same_server_errors_as_groq(self):
+        """
+        502 was missing from the Gemini set while Groq retried it, so a
+        single bad gateway ended a Gemma run (BL-126).
+        """
+
+        for status in (500, 502, 503):
+            with self.subTest(status=status):
+                busy = _Response(status, {"error": {"message": "upstream"}})
+                with mock.patch("requests.post", side_effect=[busy, _answer(VERDICT_JSON)]):
+                    with mock.patch("time.sleep"):
+                        text, _ = llm_client.call_gemini("prompt", model="gemma-4-26b-a4b-it")
+                self.assertEqual(json.loads(text), FIXTURE_VERDICT)
+
+    def test_an_empty_answer_is_an_http_error_so_the_driver_can_retry(self):
+
+        empty = _answer("")
+
+        with mock.patch("requests.post", return_value=empty):
+            with self.assertRaises(requests.HTTPError):
+                llm_client.call_gemini("prompt", model="gemma-4-26b-a4b-it")
+
     def test_per_minute_429_waits_and_retries(self):
 
         limited = _Response(429, {"error": {"details": [
@@ -290,13 +314,14 @@ class TriageModelSelectionTests(unittest.TestCase):
 
         self.assertEqual(payload["model"], "qwen/qwen3.8-27b")
         self.assertEqual(payload["max_tokens"], config.TRIAGE_MAX_RESPONSE_TOKENS)
+        self.assertEqual(payload["max_tokens"], 6000)
         self.assertEqual(payload["temperature"], 0)
         self.assertEqual(payload["response_format"], {"type": "json_object"})
         self.assertNotIn("reasoning_effort", payload)
         self.assertEqual(llm_client.triage_model_id(), "qwen/qwen3.8-27b")
         self.assertEqual(llm_client.LAST_USAGE["total_tokens"], 2000)
 
-    def test_gemini_triage_uses_the_same_cap_and_the_model_url(self):
+    def test_gemini_triage_uses_its_own_cap_and_the_model_url(self):
 
         self._select("gemini", "gemma-4-26b-a4b-it")
 
@@ -305,8 +330,27 @@ class TriageModelSelectionTests(unittest.TestCase):
 
         self.assertIn("/gemma-4-26b-a4b-it:generateContent", post.call_args.args[0])
         generation = post.call_args.kwargs["json"]["generationConfig"]
-        self.assertEqual(generation["maxOutputTokens"], config.TRIAGE_MAX_RESPONSE_TOKENS)
+        self.assertEqual(
+            generation["maxOutputTokens"],
+            config.max_response_tokens("gemma-4-26b-a4b-it"),
+        )
+        self.assertEqual(generation["maxOutputTokens"], 16384)
         self.assertEqual(generation["responseMimeType"], "application/json")
+
+    def test_the_output_cap_is_per_model_with_a_shared_default(self):
+        """
+        BL-126: Gemma gets its own cap; everyone else keeps the Groq-sized
+        default. A model nobody has listed must fall back, not raise.
+        """
+
+        self.assertEqual(config.max_response_tokens("gemma-4-26b-a4b-it"), 16384)
+
+        for model in ("openai/gpt-oss-20b", "qwen/qwen3.8-27b", "a-model-nobody-listed"):
+            with self.subTest(model=model):
+                self.assertEqual(
+                    config.max_response_tokens(model),
+                    config.TRIAGE_MAX_RESPONSE_TOKENS,
+                )
 
     def test_budgets_are_counted_per_model(self):
 
@@ -468,6 +512,88 @@ class ProtocolRunTests(unittest.TestCase):
         self.assertEqual(expected[0], [])
         self.assertTrue(all(len(seqs) <= 3 and all(s < i for s in seqs)
                             for i, seqs in enumerate(expected)))
+
+
+class ApiErrorRetryTests(unittest.TestCase):
+    """
+    BL-126: requests.HTTPError is a sibling of ConnectionError and
+    Timeout, not a subclass, so before protocol v3 every API error --
+    an exhausted 5xx budget, an exhausted 429 budget, a truncation, an
+    empty answer -- stopped the run with no retry at all. Two Gemma runs
+    died that way. A 4xx that will never succeed must still stop at once.
+    """
+
+    def setUp(self):
+
+        from memsoc.triage import protocol_run
+
+        self.protocol_run = protocol_run
+        self.logged = []
+        self.log = lambda message="", error=False: self.logged.append(str(message))
+
+        patch = mock.patch("time.sleep")
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _run(self, side_effect):
+
+        with mock.patch.object(triage_runner, "triage_alert", side_effect=side_effect):
+            with mock.patch.object(llm_client, "LAST_USAGE", {}):
+                return self.protocol_run._triage_with_retries(
+                    self.log, FIXTURE_RECORD, FIXTURE_FLOW, 0, None, "run-id"
+                )
+
+    @staticmethod
+    def _http_error(status=None):
+
+        error = requests.HTTPError(f"status {status}")
+
+        if status is not None:
+            response = requests.Response()
+            response.status_code = status
+            error.response = response
+
+        return error
+
+    def test_an_error_with_no_response_is_retried_then_succeeds(self):
+        """A truncation or empty answer raised by the client itself."""
+
+        row = self._run([self._http_error(), self._http_error(), {"ok": True}])
+
+        self.assertEqual(row["ok"], True)
+        self.assertEqual(row["attempts"], 3)
+        self.assertEqual(sum("API error" in m for m in self.logged), 2)
+
+    def test_server_errors_and_429_are_retried(self):
+
+        for status in (500, 502, 503, 429):
+            with self.subTest(status=status):
+                self.logged.clear()
+                row = self._run([self._http_error(status), {"ok": True}])
+                self.assertEqual(row["attempts"], 2)
+
+    def test_a_401_stops_at_once_without_burning_retries(self):
+
+        calls = []
+
+        def once(*args, **kwargs):
+            calls.append(1)
+            raise self._http_error(401)
+
+        with self.assertRaises(requests.HTTPError):
+            self._run(once)
+
+        self.assertEqual(len(calls), 1, "a bad key must not be retried")
+
+    def test_retries_are_bounded(self):
+
+        with self.assertRaises(requests.HTTPError):
+            self._run([self._http_error()] * 20)
+
+        self.assertEqual(
+            sum("API error" in m for m in self.logged),
+            self.protocol_run.API_ERROR_MAX_RETRIES,
+        )
 
 
 class RunnerSeamTests(unittest.TestCase):
