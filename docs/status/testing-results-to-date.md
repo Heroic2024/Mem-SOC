@@ -12,6 +12,12 @@
 
 ## 1. The short version
 
+> **Update 2026-10-18 — point 3 below is now out of date.** A complete three-arm run on a model that is
+> *not* at the floor has since finished: Gemma 4 26B, 165 alerts, 495 verdicts, protocol v3, `--verify`
+> 17/17. Self-memory cut missed attacks from 42 to 22 of 165 and cut attack-family accuracy from 54.5% to
+> 23.6%. The full write-up, with figures, is [`gemma-p3-results.md`](./gemma-p3-results.md). Everything
+> below is left as compiled on 2026-10-16.
+
 1. **The plumbing works end to end.**
    - Detector → memory → LLM → verdict → write-back runs in all three arms from one codepath.
    - It passes its integrity checks: Arm A never touched memory, and both memory arms retrieved identical past cases.
