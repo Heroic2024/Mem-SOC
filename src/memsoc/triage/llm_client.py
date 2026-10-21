@@ -297,6 +297,17 @@ def _groq_is_daily(response) -> bool:
 # both.
 _EFFORT_UNSET = object()
 
+# Separate, larger retry budget for json_validate_failed specifically
+# (see call_groq's handling of it below), distinct from
+# config.TRUNCATION_MAX_RETRIES. Unlike an oversized prompt, reasoning
+# length for a reasoning model varies between otherwise-identical calls
+# even at temperature 0 -- Groq's serving stack is not perfectly
+# deterministic -- so repeating near the safe ceiling is a real chance
+# each time, not a guess repeated for no reason. Added 2026-10-18,
+# repo owner's decision, after one alert still failed twice at the
+# original single-level boost.
+JSON_VALIDATE_MAX_RETRIES = 5
+
 
 def call_groq(prompt: str, max_tokens: int = None,
               reasoning_effort=_EFFORT_UNSET, model: str = None,
@@ -377,6 +388,7 @@ def call_groq(prompt: str, max_tokens: int = None,
     rate_limits = 0
     truncations = 0
     server_errors = 0
+    json_validate_failures = 0
 
     while True:
 
@@ -432,6 +444,55 @@ def call_groq(prompt: str, max_tokens: int = None,
 
             time.sleep(wait)
             continue
+
+        # A reasoning model can exhaust max_tokens before emitting any
+        # JSON at all; with response_format=json_object, Groq then
+        # rejects the request outright with 400 json_validate_failed
+        # instead of returning a choice with finish_reason "length".
+        # Deviation from the frozen protocol, approved by the repo
+        # owner (Tester G) 2026-10-18, after this exact alert failed
+        # identically twice at the standard 6000-token cap. Scoped as
+        # tightly as possible: only this one retried call, on this one
+        # error code, gets a larger max_tokens; every normal call keeps
+        # config.TRIAGE_MAX_RESPONSE_TOKENS untouched. The new value
+        # stays under Groq's 8000 TPM ceiling minus a prompt-token
+        # estimate (chars // 3, matching this prompt style's measured
+        # ~3 chars/token per config.py's own figure), so it does not
+        # trade this error for a 429 instead.
+        if response.status_code == 400:
+
+            try:
+                error_code = response.json().get("error", {}).get("code")
+            except ValueError:
+                error_code = None
+
+            if (error_code == "json_validate_failed"
+                    and json_validate_failures < JSON_VALIDATE_MAX_RETRIES):
+
+                json_validate_failures += 1
+
+                # 200-token margin on the first attempt (the original,
+                # more conservative boost); narrowed to 100 on every
+                # attempt after, once the cheaper option has already
+                # been tried and failed. Never zero: a 0-margin request
+                # would just trade this error for a 429 for certain.
+                margin = 200 if json_validate_failures == 1 else 100
+                estimated_prompt_tokens = len(prompt) // 3
+                ceiling = 8000 - margin
+                boosted = max(
+                    payload["max_tokens"],
+                    min(ceiling - estimated_prompt_tokens, ceiling),
+                )
+                payload["max_tokens"] = boosted
+
+                print(
+                    f"  json_validate_failed (reasoning likely exhausted the "
+                    f"cap before any content), retrying "
+                    f"{json_validate_failures}/{JSON_VALIDATE_MAX_RETRIES} "
+                    f"with max_tokens={boosted}",
+                    file=sys.stderr,
+                )
+                continue
 
         try:
             response.raise_for_status()

@@ -253,8 +253,17 @@ def _checks(model_flag, with_api):
         f"HEAD {commit or '?'}; {PROTOCOL_TAG} {tag_commit or 'not found'}")
 
     dirty = _git("status", "--porcelain", "--", "src", "tests", "requirements")
-    add("no local changes to src/, tests/, requirements/", dirty == "",
-        "clean" if dirty == "" else (dirty or "git not available"))
+    # MEMSOC_ALLOW_LOCAL_CHANGES: explicit, off-by-default override added
+    # 2026-10-18 (Tester G run) to let llm_client.py's json_validate_failed
+    # retry (see its own comment) run despite this check. Does not
+    # silence the check: still WARNs and prints exactly what changed, so
+    # it stays visible here and in --verify. Repo owner's own decision;
+    # disclosure to the team is separate from this code.
+    allow_dirty = os.environ.get("MEMSOC_ALLOW_LOCAL_CHANGES") == "1"
+    add("no local changes to src/, tests/, requirements/",
+        dirty == "",
+        "clean" if dirty == "" else (dirty or "git not available"),
+        warn=allow_dirty)
 
     for name, path in _data_paths().items():
         if not path.exists():
