@@ -494,7 +494,10 @@ def call_groq(prompt: str, max_tokens: int = None,
 
             reasoning = choice.get("message", {}).get("reasoning_content")
 
-            raise RuntimeError(
+            # HTTPError for the same reason as the Gemini side: the
+            # driver's bounded API retry covers it, and both providers
+            # must treat an answerless response the same way.
+            raise requests.HTTPError(
                 "Groq returned an empty response. "
                 f"finish_reason={choice.get('finish_reason')}, "
                 f"reasoning_chars={len(reasoning or '')}."
@@ -641,7 +644,7 @@ def call_gemini(prompt: str, max_tokens: int = None, model: str = None,
                 time.sleep(wait)
                 continue
 
-        if (response.status_code in (500, 503)
+        if (response.status_code in (500, 502, 503)
                 and server_errors < config.SERVER_ERROR_MAX_RETRIES):
 
             server_errors += 1
@@ -668,7 +671,13 @@ def call_gemini(prompt: str, max_tokens: int = None, model: str = None,
         candidates = body.get("candidates") or []
 
         if not candidates:
-            raise RuntimeError(
+            # HTTPError, not RuntimeError, so the protocol driver's
+            # bounded API retry covers it: an answerless 200 is no more
+            # final than a truncated one, and it used to be the only
+            # response shape that stopped a run on its first occurrence.
+            # Nothing is defaulted -- if every attempt comes back empty
+            # the run still halts.
+            raise requests.HTTPError(
                 "Gemini returned no candidates. "
                 f"promptFeedback={body.get('promptFeedback')}"
             )
@@ -709,7 +718,7 @@ def call_gemini(prompt: str, max_tokens: int = None, model: str = None,
         )
 
         if not text.strip():
-            raise RuntimeError(
+            raise requests.HTTPError(
                 f"Gemini returned an empty response. finishReason={finish}."
             )
 
@@ -743,14 +752,14 @@ def call_triage_llm(prompt: str):
     if config.TRIAGE_PROVIDER == "gemini":
         return call_gemini(
             prompt,
-            max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
+            max_tokens=config.max_response_tokens(config.TRIAGE_MODEL),
             model=config.TRIAGE_MODEL,
             json_mode=config.TRIAGE_JSON_MODE,
         )
 
     return call_groq(
         prompt,
-        max_tokens=config.TRIAGE_MAX_RESPONSE_TOKENS,
+        max_tokens=config.max_response_tokens(config.TRIAGE_MODEL),
         reasoning_effort=config.TRIAGE_REASONING_EFFORT,
         model=config.TRIAGE_MODEL,
         json_mode=config.TRIAGE_JSON_MODE,
