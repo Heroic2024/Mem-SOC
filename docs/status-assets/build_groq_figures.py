@@ -1,6 +1,6 @@
 """
 Builds the 4 figures for docs/status/groq-gptoss20b-p1-results.md, the same
-shape as build_p3_figures.py (docs/status/aryan-gemma-results/) used for the
+shape as build_p3_figures.py (docs/status-assets/) used for the
 Gemma write-up. Read-only against the verdict files and ground truth; writes
 PNGs beside itself only. Needs numpy and matplotlib only -- no embedding
 model, no vector store, no network.
