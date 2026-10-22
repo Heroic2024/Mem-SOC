@@ -263,6 +263,43 @@ def load_done_uids(verdicts_path):
     return done
 
 
+def resume_mismatches(done_rows: dict, condition: str) -> list:
+    """
+    Ways in which the rows already in a run differ from what this
+    invocation would write. Empty means resuming is safe.
+
+    A run directory is one condition, one model and one prompt wording.
+    Resuming it under a different --memory, GEMINI_MODEL or
+    PROMPT_VARIANT would append incomparable verdicts to the same file,
+    and nothing downstream could tell them apart.
+
+    Rows written before prompt_variant existed were produced by the
+    first wording, so a missing field reads as label-hypothesis-v1
+    (BL-120).
+    """
+
+    expected = {
+        "memory_condition": condition,
+        "model_id": llm_client.triage_model_id(),
+        "prompt_variant": config.PROMPT_VARIANT,
+    }
+
+    defaults = {"prompt_variant": "label-hypothesis-v1"}
+
+    mismatches = []
+
+    for key, want in expected.items():
+
+        found = sorted({
+            str(row.get(key, defaults.get(key))) for row in done_rows.values()
+        })
+
+        if found and found != [want]:
+            mismatches.append(f"{key}: run has {found}, this invocation is {want!r}")
+
+    return mismatches
+
+
 def triage_alert(record: dict, flow: dict, seq: int, mem, run_id: str = "") -> dict:
     """
     Triage one alert and return the verdict row to be persisted.
@@ -297,6 +334,7 @@ def triage_alert(record: dict, flow: dict, seq: int, mem, run_id: str = "") -> d
         "arm": "baseline" if mem.condition == "off" else f"memory-{mem.condition}",
         "memory_condition": mem.condition,
         "run_id": run_id,
+        "prompt_variant": config.PROMPT_VARIANT,
         "seq": seq,
         "detector_label": multiclass["prediction"],
         "detector_score": multiclass["confidence"],
@@ -428,6 +466,19 @@ def main():
 
     done = load_done_uids(verdicts_path)
     pending = [a for a in sample if a["uid"] not in done]
+
+    if args.run_id:
+
+        mismatches = resume_mismatches(load_done_rows(verdicts_path), args.memory)
+
+        if mismatches:
+            print(
+                f"Refusing to resume run {args.run_id!r}: it was started "
+                "under different settings.\n  " + "\n  ".join(mismatches) +
+                "\nUse a new --run-id for a new configuration.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     print(f"{len(alerts)} alerts available, {len(sample)} in sample, "
           f"{len(done)} already triaged, {len(pending)} pending")
@@ -568,7 +619,7 @@ def main():
                 "\nWARNING: the LLM echoed the detector's category on every "
                 "alert.\nIf this holds over the full run, category accuracy "
                 "measures nothing --\nboth arms would tie at the detector's "
-                "own 88.1%. Review the prompt in\ntriage_prompt.py before "
+                "own accuracy. Review the prompt in\ntriage_prompt.py before "
                 "spending the rest of the request budget."
             )
 

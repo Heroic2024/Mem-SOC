@@ -379,6 +379,11 @@ the same time window, and model drift listed as a limitation.
 
 The settings are identical for all three: temperature 0; a 6,000-token output cap for every model (it was 16,384 on Gemini); JSON answer mode on both providers; reasoning or thinking at each model's default. Nothing was chosen by looking at Arm B results. Models are compared with each other, never pooled.
 
+**Run 2026-10-17 to 2026-10-22 (Person 2): tester Q's model, `qwen/qwen3.8-27b`, was run and reported** — Arms A and B-self, 250 alerts each, prompt variant `label-hypothesis-v1`. Result in [`status/qwen-results.md`](./status/qwen-results.md): the model is at the floor (Arm A caught 5 of 250, B-self 0), so the run is a valid negative result that cannot answer the research question. See BL-134 and BL-137.
+
+The report path keeps its own Groq model (`GROQ_MODEL`) and is unaffected by the triage model. Verdicts made on different models are never pooled: that includes the 2026-10-15 `gemini-3.5-flash-lite` runs against any Qwen or Gemma verdict.
+
+
 --
 
 # Part C — Answer before building the memory layer

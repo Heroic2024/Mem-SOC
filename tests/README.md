@@ -15,9 +15,9 @@ Run the suite natively instead of in Docker with:
 PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-A full run is **56 tests**: 13 from `test_pipeline.py`, 6 from
+A full run is **58 tests**: 13 from `test_pipeline.py`, 6 from
 `test_gateway_contract.py`, 16 from `test_memory.py` (9 of which skip
-outside the memory venv), 21 from `test_triage_memory.py`.
+outside the memory venv), 23 from `test_triage_memory.py`.
 
 Live tiers report `skipped` rather than failing when nothing is
 reachable, so a green run without Docker still means something. Read the

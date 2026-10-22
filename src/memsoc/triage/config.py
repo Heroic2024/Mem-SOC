@@ -101,6 +101,9 @@ REPORTS_TO_KEEP = 10
 # included (it was 16384 there), so no model was given more room to think
 # than another. 6000 is the most Groq's 8000 TPM allows beside the
 # largest memory-arm prompt (~1850 tokens), so it stays the default.
+#
+# The 2026-10-17 Qwen run (docs/status/qwen-results.md) was made at 1000,
+# before this uniform cap; its write-up records the cap it used.
 TRIAGE_MAX_RESPONSE_TOKENS = 6000
 
 # Per-model override, read through max_response_tokens() below. Same
@@ -237,6 +240,17 @@ GROUND_TRUTH_PATH = Path(paths.GROUND_TRUTH)
 # type a model id (docs/status/testing-protocol-v1.md).
 # ----------------------------------------------------------------------
 TRIAGE_PROVIDER = os.environ.get("TRIAGE_PROVIDER", "gemini")
+
+# Which wording of the triage prompt produced a verdict. Written into
+# every verdict row so that verdicts from different wordings can never be
+# pooled into one comparison (BL-018, BL-106).
+#
+# Bump it whenever triage_prompt.render() output changes. The value is
+# tied to a hash of the rendered Arm A prompt in
+# tests/test_triage_memory.py, so a prompt edit without a bump fails the
+# tests. "label-hypothesis" is the current framing: the detector's label
+# is shown as a hypothesis the analyst may overrule (BL-018).
+PROMPT_VARIANT = "label-hypothesis-v1"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # The decided model is the default. GEMINI_MODEL in the environment

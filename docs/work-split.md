@@ -91,8 +91,8 @@ never touches its internals.**
 
 | Build | Notes |
 |---|---|
-| The arm / condition toggle | At the two existing seams, `triage_runner.py:235` and `:247`. Replace the hardcoded `"arm": "baseline"` string literal at `:254`. |
-| Run identity | `run_id`, per-run output paths, `prompt_variant` on every record. The resume-on-restart behaviour (`:193-224`, `:345`) must stay available but must stop preventing a fresh run — B3 needs 3 runs per arm and that is currently unexpressible. |
+| The arm / condition toggle | **Done** (`8816b7d`). `--memory off/self/oracle`; seam 1 `mem.retrieve` in `triage_alert()`, seam 2 `write_back()` after the verdict is logged. The hardcoded `"arm": "baseline"` is gone. |
+| Run identity | **Done.** `--run-id` gives each run its own directory, so a fresh run is a new ID (3 runs per arm = 3 IDs); restarting the same ID still resumes. `run_id`, `seq` and `prompt_variant` (2026-10-16, BL-120) are on every record. Resuming an ID under a different memory condition, model or prompt variant is refused. |
 | The `priority` field | **Blocked on BL-106 sign-off.** The prompt template is a protected component and is declared LOCKED at `triage_prompt.py:255-262`. Do not edit it before approval. When approved: applied to both arms in one commit, and versioned. |
 
 **No `if arm == "baseline"` branch anywhere outside the memory module.** If you
@@ -130,10 +130,29 @@ seeing results.
 Person 1 and Person 2 agree these two signatures before either writes code.
 Everything else is independent.
 
+**Agreed and built** (BL-110, reviewed by Person 2 on 2026-10-16). The
+original sketch was `retrieve(alert)` / `write(alert, verdict)`; the real
+interface carries what the sketch left out:
+
 ```python
-retrieve(alert) -> list[Case]      # read path;  returns [] when memory is off
-write(alert, verdict) -> None      # write path; no-op when memory is off
+mem = open_memory(run_id, condition)       # "off" | "self" | "oracle"
+
+mem.retrieve(record, flow) -> list[Case]   # read path;  [] when "off"
+mem.write(record, flow, verdict, seq, precedent_used) -> None
+                                           # write path; no-op when "off"
 ```
+
+- `record, flow` — triage already holds an alert as the detector's
+  `live_results` record plus its joined flow.
+- `seq` — the alert's position in the stream; the case ID is
+  `{run_id}:{seq:06d}`.
+- `precedent_used` — the case IDs `retrieve` returned for this alert, so a
+  wrong verdict can be traced back to the precedent that caused it.
+- `Case` carries `case_id`, `similarity`, `distance`, `document`, `metadata`.
+
+**Call order** (`triage_runner.py`): `retrieve` before the prompt is built;
+`write` only after the verdict is appended to the run's verdict file, and
+replayed from that file on resume.
 
 Get this wrong and the two of you block each other for a day. Get it right and
 you never need to talk again until integration.

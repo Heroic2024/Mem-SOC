@@ -35,6 +35,14 @@ from test_memory import FIXTURE_FLOW, FIXTURE_RECORD, FIXTURE_VERDICT
 # and every prompt was byte-identical.
 ARM_A_PROMPT_SHA256 = "fd33c7835b5f905af12f42765e63b328f16e802bd05ea80ec6aa80cbd5c2b351"
 
+# Every prompt wording ever used, by the config.PROMPT_VARIANT name it
+# was run under. A prompt change adds a NEW entry and bumps the variant;
+# an existing entry is never edited, or verdicts already labelled with
+# that name would stop meaning what they say.
+PROMPT_VARIANT_SHA256 = {
+    "label-hypothesis-v1": ARM_A_PROMPT_SHA256,
+}
+
 
 def _case(case_id, similarity, verdict="true_positive", category="Exploits"):
 
@@ -125,6 +133,22 @@ class PrecedentSectionTests(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256(prompt.encode()).hexdigest(), ARM_A_PROMPT_SHA256
             )
+
+    def test_prompt_variant_names_the_current_wording(self):
+        """A prompt edit without a PROMPT_VARIANT bump fails here."""
+
+        self.assertIn(
+            config.PROMPT_VARIANT, PROMPT_VARIANT_SHA256,
+            "PROMPT_VARIANT has no recorded hash; add one for the new wording",
+        )
+
+        prompt = triage_prompt.render(FIXTURE_RECORD, FIXTURE_FLOW)
+
+        self.assertEqual(
+            hashlib.sha256(prompt.encode()).hexdigest(),
+            PROMPT_VARIANT_SHA256[config.PROMPT_VARIANT],
+            "the triage prompt changed but config.PROMPT_VARIANT did not",
+        )
 
     def test_precedent_shows_ids_and_similarity_most_similar_first(self):
 
@@ -616,6 +640,7 @@ class RunnerSeamTests(unittest.TestCase):
 
             self.assertEqual(hashlib.sha256(prompt.encode()).hexdigest(), ARM_A_PROMPT_SHA256)
             self.assertEqual(row["arm"], "baseline")
+            self.assertEqual(row["prompt_variant"], config.PROMPT_VARIANT)
             self.assertEqual(row["precedent_used"], "")
             self.assertEqual(row["precedent_count"], 0)
             self.assertEqual(row["precedent_chars"], 0)
@@ -653,6 +678,33 @@ class RunnerSeamTests(unittest.TestCase):
             4,
             ["run:000001"],
         )])
+
+    def test_resume_refuses_a_run_started_under_other_settings(self):
+
+        model = llm_client.triage_model_id()
+
+        def row(**overrides):
+            base = {
+                "memory_condition": "self",
+                "model_id": model,
+                "prompt_variant": config.PROMPT_VARIANT,
+            }
+            base.update(overrides)
+            return base
+
+        check = triage_runner.resume_mismatches
+
+        self.assertEqual(check({}, "self"), [])
+        self.assertEqual(check({"a": row()}, "self"), [])
+
+        # Rows from before prompt_variant existed read as the first wording.
+        legacy = row()
+        del legacy["prompt_variant"]
+        self.assertEqual(check({"a": legacy}, "self"), [])
+
+        self.assertEqual(len(check({"a": row()}, "off")), 1)
+        self.assertEqual(len(check({"a": row(model_id="some-other-model")}, "self")), 1)
+        self.assertEqual(len(check({"a": row(prompt_variant="other-v9")}, "self")), 1)
 
 
 if __name__ == "__main__":

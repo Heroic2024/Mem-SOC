@@ -52,7 +52,9 @@ package under `src/memsoc/` and one directory here.
 | See where the project stands | [`status/phase0.md`](./status/phase0.md) |
 | **See every test result so far (Arm A and B together) and the options for the next run** | [`status/testing-results-to-date.md`](./status/testing-results-to-date.md) |
 | **Read the first complete three-arm result (Gemma 4 26B, 165 alerts, with figures)** | [`status/gemma-p3-results.md`](./status/gemma-p3-results.md) |
+| See the Qwen 3.8 27B A vs B-self result and figures | [`status/qwen-results.md`](./status/qwen-results.md) |
 | **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v3.md`](./status/testing-protocol-v3.md) |
+| **Run the live demo for the final presentation** | [`status/final-demo-runbook.md`](./status/final-demo-runbook.md) |
 
 ---
 
@@ -94,7 +96,9 @@ docs/
 │   ├── phase0.md
 │   ├── testing-results-to-date.md
 │   ├── testing-protocol-v3.md
-│   └── gemma-p3-results.md
+│   ├── gemma-p3-results.md
+│   ├── qwen-results.md
+│   └── final-demo-runbook.md
 └── archive/                   superseded, banner-marked, do not follow
 ```
 
