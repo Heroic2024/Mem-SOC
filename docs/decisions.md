@@ -332,6 +332,8 @@ a single figure, for every number. Compare the two arms alert-by-alert
 
 **Status:** open. Tracked as BL-017, and settles half of OQ-6.
 
+**Scoped 2026-10-16 for protocol v1:** the **first 165 alerts** in stream order (the same slice as the 2026-10-15 Flash-Lite run), all three arms, **one run per arm per model**. The free tiers' daily token limits make 1,135 alerts × 3 repeats infeasible. Three repeats remain the target for a later round; this round reports one run per arm and says so.
+
 ### B4. Which version of the prompt do we use?
 
 **The question:** three options — tell the LLM the detector's answer is correct;
@@ -367,7 +369,20 @@ the same time window, and model drift listed as a limitation.
 
 **Clarified 2026-10-14:** `gemini-3.8-flash` on the Google Gemini API, temperature **0**, thinking level left at the model's default. It is used for per-alert triage in every arm; reports stay on Groq. Implemented in `src/memsoc/triage/config.py` and `llm_client.call_triage_llm()`. BL-099 is closed.
 
-**Changed 2026-10-17 (Person 2):** triage moves to **Groq, `qwen/qwen3.8-27b`, temperature 0**, with no reasoning parameter sent. `gemini-3.8-flash` stayed unreachable and the Gemini free tier could not carry the run (BL-117). The report path keeps its own Groq model (`GROQ_MODEL`), so it does not change. Verdicts made on any Gemini model, including the 2026-10-15 `gemini-3.5-flash-lite` runs, are not comparable with Qwen verdicts and must not be pooled. See BL-121.
+**Amended 2026-10-16 — three free models replace `gemini-3.8-flash`.** Its free tier allows 20 requests a day (BL-117), so the full test would take about 170 days. Paid tiers stay ruled out (A4). The test now runs on three free models, one per tester, under test protocol v1 (`docs/status/testing-protocol-v1.md`):
+
+| Tester | Model | Provider |
+|---|---|---|
+| G | `openai/gpt-oss-20b` (the August pilot's model) | Groq |
+| Q | `qwen/qwen3.8-27b` (a Groq *preview* model, so it can be withdrawn) | Groq |
+| M | `gemma-4-26b-a4b-it` | Google AI Studio |
+
+The settings are identical for all three: temperature 0; a 6,000-token output cap for every model (it was 16,384 on Gemini); JSON answer mode on both providers; reasoning or thinking at each model's default. Nothing was chosen by looking at Arm B results. Models are compared with each other, never pooled.
+
+**Run 2026-10-17 to 2026-10-22 (Person 2): tester Q's model, `qwen/qwen3.8-27b`, was run and reported** — Arms A and B-self, 250 alerts each, prompt variant `label-hypothesis-v1`. Result in [`status/qwen-results.md`](./status/qwen-results.md): the model is at the floor (Arm A caught 5 of 250, B-self 0), so the run is a valid negative result that cannot answer the research question. See BL-134 and BL-137.
+
+The report path keeps its own Groq model (`GROQ_MODEL`) and is unaffected by the triage model. Verdicts made on different models are never pooled: that includes the 2026-10-15 `gemini-3.5-flash-lite` runs against any Qwen or Gemma verdict.
+
 
 --
 

@@ -1,7 +1,7 @@
 # Qwen 3.8 27B: the first two-arm result on Groq
 
-> **Run:** 250 alerts × 2 arms = 500 verdicts, 2026-10-17 to 2026-10-22, spread over several days by the Groq free-tier token limit (BL-122).
-> **Model:** `qwen/qwen3.8-27b` via Groq, temperature 0, output cap 1,000 tokens (BL-121).
+> **Run:** 250 alerts × 2 arms = 500 verdicts, 2026-10-17 to 2026-10-22, spread over several days by the Groq free-tier token limit (BL-135).
+> **Model:** `qwen/qwen3.8-27b` via Groq, temperature 0, output cap 1,000 tokens (BL-134).
 > **Prompt variant:** `label-hypothesis-v1`, identical in both arms.
 > **Run ids:** `armA-qwen-20261017`, `bself-qwen-20261017`. No B-oracle arm was run.
 > **Integrity:** both arms cover the same 250 alerts, in the same stream order. Arm A created no memory store. Every verdict carries the same model id and prompt variant.
@@ -104,7 +104,7 @@ B-self was perfectly consistent, just as it was with Gemma. Here, though, the co
 2. **The baseline is at the floor.** With a 2% recall baseline there is almost nothing for memory to improve, and too few disagreements for a paired test to detect a harmful effect. Gemma 4 26B on the same prompt had a baseline recall of 74.5% (165 alerts, `aryan` branch). So this result is about **Qwen with this prompt**, not about memory in general.
 3. **The model's reasoning overrules the detector.** The rationales argue from flow features that look benign, such as low volume, normal TTLs and a completed handshake, and they discount the detector's score. That is how the model fails on this prompt. Whether to change the prompt is a decision for the team: the prompt is a protected component, and any change must apply to both arms in one commit.
 4. **One run per arm, one ordering.** `work-split.md` asks for 3 runs per arm. This is 1.
-5. **Run history.** The run was interrupted several times by Groq's daily token limit. On 2026-10-17, two copies of each arm ran concurrently (BL-123):
+5. **Run history.** The run was interrupted several times by Groq's daily token limit. On 2026-10-17, two copies of each arm ran concurrently (BL-136):
    - **Arm A:** its file holds 42 duplicate rows. The first row per alert is the one scored. With memory off, each verdict is independent of the others.
    - **B-self:** it was rolled back to its 64 clean alerts and re-run from there. A backup of the state before the rollback is in `artifacts/backups/bself-qwen-20261017-before-rollback-20261018/`. Every B-self verdict scored here saw only memory written before it.
 
@@ -135,7 +135,7 @@ B-self was perfectly consistent, just as it was with Gemma. Here, though, the co
 
 ## 8. What this means for the next step
 
-These are tracked as **BL-124**.
+These are tracked as **BL-137**.
 
 - **No claim about memory can be made from this run.** Neither "memory helps" nor "memory hurts" is supported.
 - **Before running Qwen again,** the team has to decide two things:

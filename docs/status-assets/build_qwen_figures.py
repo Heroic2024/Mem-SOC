@@ -1,4 +1,4 @@
-"""Render the Qwen two-arm results figures (BL-124).
+"""Render the Qwen two-arm results figures (BL-137).
 
 Same method and look as build_p3_figures.py on the aryan branch (the Gemma
 p3 figures): every metric comes from memsoc.triage.score_verdicts,
@@ -6,8 +6,8 @@ unchanged, and nothing is re-derived here except the paired McNemar test,
 which the scorer does not have yet (Person 3's list in work-split.md).
 
 Two arms only -- B-oracle was not run for Qwen. Arm A's verdict file holds
-42 duplicate uids from two runners overlapping on 2026-10-17 (BL-123); the
-first row per uid is kept, which is the row that was scored for BL-124.
+42 duplicate uids from two runners overlapping on 2026-10-17 (BL-136); the
+first row per uid is kept, which is the row that was scored for BL-137.
 
 Colours are the dataviz reference palette's first two categorical slots,
 the same ones the Gemma figures give these arms, so a colour means the
@@ -100,7 +100,7 @@ runs = {}
 for arm, run_id in ARMS.items():
     path = os.path.join(paths.run_dir(run_id), "triage_verdicts.jsonl")
 
-    # First row per uid wins (BL-123). A dict comprehension would keep the
+    # First row per uid wins (BL-136). A dict comprehension would keep the
     # last, which differs on one Arm A alert.
     rows = {}
     for r in score_verdicts.read_verdicts(path):
