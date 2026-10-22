@@ -53,6 +53,7 @@ package under `src/memsoc/` and one directory here.
 | **See every test result so far (Arm A and B together) and the options for the next run** | [`status/testing-results-to-date.md`](./status/testing-results-to-date.md) |
 | **Read the first complete three-arm result (Gemma 4 26B, 165 alerts, with figures)** | [`status/gemma-p3-results.md`](./status/gemma-p3-results.md) |
 | See the Qwen 3.8 27B A vs B-self result and figures | [`status/qwen-results.md`](./status/qwen-results.md) |
+| See the Groq gpt-oss-20b three-arm result on protocol v1 and figures | [`status/groq-gptoss20b-p1-results.md`](./status/groq-gptoss20b-p1-results.md) |
 | **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v3.md`](./status/testing-protocol-v3.md) |
 | **Run the live demo for the final presentation** | [`status/final-demo-runbook.md`](./status/final-demo-runbook.md) |
 
@@ -98,6 +99,7 @@ docs/
 │   ├── testing-protocol-v3.md
 │   ├── gemma-p3-results.md
 │   ├── qwen-results.md
+│   ├── groq-gptoss20b-p1-results.md
 │   └── final-demo-runbook.md
 └── archive/                   superseded, banner-marked, do not follow
 ```

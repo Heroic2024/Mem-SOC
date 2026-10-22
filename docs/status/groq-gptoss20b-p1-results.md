@@ -5,7 +5,7 @@
 > pauses and two API key swaps; not a single continuous session).
 > **Model:** `openai/gpt-oss-20b` via Groq, temperature 0, output cap 6,000 tokens (standard calls).
 > **Protocol:** **v1**, commit `873262d`, tag `memsoc-protocol-v1` — **not** the v3 protocol
-> Gemma's run used (see `docs/status/aryan-gemma-results/`). This run predates v3 and was
+> Gemma's run used (see [`gemma-p3-results.md`](./gemma-p3-results.md)). This run predates v3 and was
 > not re-cut onto it.
 > **Run ids:** `armA-gptoss20b-p1`, `bself-gptoss20b-p1`, `boracle-gptoss20b-p1`.
 > **Integrity:** `--verify` passed **17 of 17** checks, including "Arm A retrieved nothing",
@@ -60,7 +60,7 @@ Every term used below is defined in §2.
 
 ## 2. The words used in this report
 
-Same definitions as the Gemma write-up (`docs/status/aryan-gemma-results/gemma-p3-results.md`
+Same definitions as the Gemma write-up ([`gemma-p3-results.md`](./gemma-p3-results.md)
 §2) — alert, arm, self-memory, oracle memory, verdict, attack family, TP/FN/FP/TN,
 recall, precision, agreement with detector, near-duplicate group, paired comparison,
 McNemar test, p-value, cold start. Not repeated verbatim here to avoid drift between
