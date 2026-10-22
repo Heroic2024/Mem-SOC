@@ -50,6 +50,7 @@ package under `src/memsoc/` and one directory here.
 | See the retrieval-quality charts (token fit, family match, thresholds) | [`../notebooks/retrieval-quality.ipynb`](../notebooks/retrieval-quality.ipynb) — run in the memory venv; PNGs land in `artifacts/figures/` |
 | Know what is broken or missing | [`PRODUCT_BACKLOG.md`](./PRODUCT_BACKLOG.md) |
 | See where the project stands | [`status/phase0.md`](./status/phase0.md) |
+| See the Qwen A vs B-self result and figures | [`status/qwen-results.md`](./status/qwen-results.md) |
 
 ---
 
@@ -87,7 +88,9 @@ docs/
 │   └── retrieval-precision-investigation.md
 ├── design-assets/             scripts + figures for the design document
 ├── status/
-│   └── phase0.md
+│   ├── phase0.md
+│   └── qwen-results.md
+├── status-assets/             script + figures for the status reports
 └── archive/                   superseded, banner-marked, do not follow
 ```
 
