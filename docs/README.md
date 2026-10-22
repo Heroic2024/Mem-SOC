@@ -64,7 +64,7 @@ package under `src/memsoc/` and one directory here.
 ```text
 docs/
 ├── README.md                  this file
-├── decisions.md               open questions + settled decisions
+├── decisions.md               open questions, settled decisions, and what was run
 ├── work-split.md              who owns what, and the interfaces between us
 ├── PRODUCT_BACKLOG.md         central register of open work
 ├── architecture/              system-wide views
