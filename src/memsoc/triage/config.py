@@ -97,14 +97,49 @@ REPORTS_TO_KEEP = 10
 # quota or every request is rejected outright. That leaves roughly one
 # request per minute.
 #
-# Since 2026-10-16 the same cap applies to EVERY triage model, Gemini
-# included (it was 16384 there), so no model is given more room to think
+# From 2026-10-16 the same cap applied to EVERY triage model, Gemini
+# included (it was 16384 there), so no model was given more room to think
 # than another. 6000 is the most Groq's 8000 TPM allows beside the
-# largest memory-arm prompt (~1850 tokens).
+# largest memory-arm prompt (~1850 tokens), so it stays the default.
 #
 # The 2026-10-17 Qwen run (docs/status/qwen-results.md) was made at 1000,
 # before this uniform cap; its write-up records the cap it used.
 TRIAGE_MAX_RESPONSE_TOKENS = 6000
+
+# Per-model override, read through max_response_tokens() below. Same
+# shape as DAILY_REQUEST_LIMITS: a provider limit is a property of the
+# model, not of the experiment, and one number cannot fit both.
+#
+# gemma-4-26b-a4b-it is here because 6000 stopped two protocol runs
+# (BL-126). Measured over 666 Gemma verdicts: the median answer is 1084
+# output tokens and 99% are under 5000, but the tail is close to the
+# cap -- the highest answer that finished was 5944, and alert
+# C1424232646440-35469-9087 spends 4399 tokens in Arm A alone, with no
+# precedents in the prompt. On 2026-10-17 the same alert's oracle prompt
+# returned 2087 tokens in the morning and then ran away past the cap on
+# nine consecutive attempts in the afternoon, so the margin is not
+# something a rerun can be relied on to clear.
+#
+# 16384 is not a new number: it is what Gemini models ran under before
+# 2026-10-16. Gemma is served by AI Studio, whose free tier limits input
+# tokens per minute rather than output, so the Groq TPM ceiling that
+# fixes 6000 does not apply to it.
+#
+# This is a declared divergence between models and it is stated in the
+# protocol document. Every arm of a given model shares that model's cap,
+# so the A / B-self / B-oracle comparison is unaffected; what it
+# qualifies is the comparison BETWEEN models.
+TRIAGE_MAX_RESPONSE_TOKENS_BY_MODEL = {
+    "gemma-4-26b-a4b-it": 16384,
+}
+
+
+def max_response_tokens(model: str) -> int:
+    """The output cap for one model, falling back to the shared default."""
+
+    return TRIAGE_MAX_RESPONSE_TOKENS_BY_MODEL.get(
+        model, TRIAGE_MAX_RESPONSE_TOKENS
+    )
 
 # The triage path sends NO reasoning_effort parameter, which is what the
 # 2026-08-30 baseline run did. The report path above sets "low"; adopting

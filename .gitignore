@@ -42,3 +42,6 @@ soc-triage/
 # NOTE: models/*.pkl ARE tracked on purpose. The detector is frozen after
 # training (PROJECT_BRIEF.md section 3) and the weights must be reproducible
 # from a checkout, so the two LightGBM pickles are committed.
+
+# --- Documentation ---
+documentation/

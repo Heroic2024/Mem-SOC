@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-10-17 by [`testing-protocol-v2.md`](./testing-protocol-v2.md), and the current protocol is now [`../status/testing-protocol-v3.md`](../status/testing-protocol-v3.md).** v2 is v1 plus one parser fix: a verdict the model wraps in a JSON array is unwrapped and then validated as before (backlog **BL-125**). Nothing else changed. Do not run this version; its `-p1` run ids and the `memsoc-protocol-v1` tag are kept only so earlier partial runs stay readable.
+
 # Test Protocol v1 — Memory Layer, Three LLMs
 
 > **Who this is for:** the three testers, and the AI agent each of them uses. **Follow it exactly, top to bottom.**

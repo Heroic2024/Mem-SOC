@@ -12,6 +12,12 @@
 
 ## 1. The short version
 
+> **Update 2026-10-18 — point 3 below is now out of date.** A complete three-arm run on a model that is
+> *not* at the floor has since finished: Gemma 4 26B, 165 alerts, 495 verdicts, protocol v3, `--verify`
+> 17/17. Self-memory cut missed attacks from 42 to 22 of 165 and cut attack-family accuracy from 54.5% to
+> 23.6%. The full write-up, with figures, is [`gemma-p3-results.md`](./gemma-p3-results.md). Everything
+> below is left as compiled on 2026-10-16.
+
 1. **The plumbing works end to end.**
    - Detector → memory → LLM → verdict → write-back runs in all three arms from one codepath.
    - It passes its integrity checks: Arm A never touched memory, and both memory arms retrieved identical past cases.
@@ -28,7 +34,7 @@
 6. **The next step is a choice of free model.**
    - Four free models that have not yet been tried answer through our existing code with no changes: **Gemma 4 26B-A4B, Gemma 4 31B, Gemini 3.6 Flash, Gemini 3.1 Flash-Lite**.
    - Their daily limits are not published. They are shown only on the AI Studio rate-limit page, which is a one-minute check. Section 8 lays out the options.
-   - **Decided later the same day:** three testers run three free models (gpt-oss-20b and qwen3.8-27b on Groq, Gemma 4 26B on AI Studio) on the first 165 alerts, all three arms, under [`testing-protocol-v1.md`](./testing-protocol-v1.md) (decisions.md B5, BL-122).
+   - **Decided later the same day:** three testers run three free models (gpt-oss-20b and qwen3.8-27b on Groq, Gemma 4 26B on AI Studio) on the first 165 alerts, all three arms, under [`testing-protocol-v3.md`](./testing-protocol-v3.md) (decisions.md B5, BL-122).
    - **Update, same day (§7a–7b):** limits were read from AI Studio and three models were checked on 5 real alerts. **Only Gemma 4 26B is usable and off the floor** (14,400/day, ~45 s per alert, 3/5 attacks escalated). Gemma 4 31B is too slow and overloaded. 3.1 Flash Lite is at the floor (0/5). Our own request counter would cap any Gemma run at 480/day (BL-121).
 
 ---

@@ -1,5 +1,5 @@
 """
-Test protocol v1 -- the three-arm memory test for one LLM, run the same
+Test protocol v3 -- the three-arm memory test for one LLM, run the same
 way on every tester's machine.
 
     python -m memsoc.triage.protocol_run --model <model> --preflight
@@ -11,7 +11,7 @@ way on every tester's machine.
 <model> is one of gpt-oss-20b, qwen3.8-27b, gemma-4-26b. Everything else
 -- the alerts, the arms, their order, the prompt, the output cap, the
 memory settings -- is fixed here and cannot be changed from the command
-line. Tester instructions: docs/status/testing-protocol-v1.md.
+line. Tester instructions: docs/status/testing-protocol-v3.md.
 
 How this relates to triage_runner.py. Every verdict is produced by the
 same triage_runner.triage_alert() and stored by the same write_back(),
@@ -41,8 +41,8 @@ from pathlib import Path
 
 from memsoc import paths
 
-PROTOCOL = "p1"
-PROTOCOL_TAG = "memsoc-protocol-v1"
+PROTOCOL = "p3"
+PROTOCOL_TAG = "memsoc-protocol-v3"
 PROTOCOL_ALERTS = 165
 
 # --model value -> (provider, exact model id, tag used in run ids).
@@ -99,6 +99,11 @@ QUOTA_WAIT_MAX = 6 * 3600
 PARSE_MAX_ATTEMPTS = 3
 NETWORK_MAX_RETRIES = 10
 NETWORK_RETRY_WAIT = 60
+
+# Retries for a retryable HTTP error (5xx, 429, or an answer the client
+# could not use, such as a truncation or an empty response). The client
+# retries inside one call; this retries the call.
+API_ERROR_MAX_RETRIES = 3
 
 
 # ----------------------------------------------------------------------
@@ -349,7 +354,7 @@ def _run_config(model_flag, run_id, condition):
         "provider": provider,
         "model_id": model_id,
         "temperature": config.TEMPERATURE if provider == "groq" else config.GEMINI_TEMPERATURE,
-        "max_output_tokens": config.TRIAGE_MAX_RESPONSE_TOKENS,
+        "max_output_tokens": config.max_response_tokens(model_id),
         "json_mode": config.TRIAGE_JSON_MODE,
         "reasoning": "model default",
         "embedding_model": embedding.MODEL_NAME,
@@ -406,9 +411,10 @@ def _quota_wait(error):
 
 def _triage_with_retries(log, record, flow, seq, mem, run_id):
     """
-    One verdict, retried on an unparseable answer or a dropped connection.
-    Raises DailyBudgetExhausted untouched; anything else after the retries
-    is raised to stop the run.
+    One verdict, retried on an unparseable answer, a dropped connection,
+    or a retryable API error (5xx, 429, or an answer the client could not
+    use). Raises DailyBudgetExhausted untouched; anything else after the
+    retries is raised to stop the run.
     """
 
     import requests
@@ -417,12 +423,13 @@ def _triage_with_retries(log, record, flow, seq, mem, run_id):
 
     parse_failures = 0
     network_failures = 0
+    api_failures = 0
 
     while True:
         try:
             row = triage_runner.triage_alert(record, flow, seq, mem, run_id)
             row["protocol"] = PROTOCOL
-            row["attempts"] = parse_failures + network_failures + 1
+            row["attempts"] = parse_failures + network_failures + api_failures + 1
             row.update({f"usage_{k}": v for k, v in llm_client.LAST_USAGE.items()})
             return row
 
@@ -442,6 +449,34 @@ def _triage_with_retries(log, record, flow, seq, mem, run_id):
                 raise
             log(f"  network error ({type(e).__name__}); waiting {NETWORK_RETRY_WAIT}s, "
                 f"retry {network_failures}/{NETWORK_MAX_RETRIES}", error=True)
+            time.sleep(NETWORK_RETRY_WAIT)
+
+        except requests.HTTPError as e:
+
+            # HTTPError is a sibling of ConnectionError and Timeout, not
+            # a subclass, so before this arm existed every one of them
+            # stopped the run outright: an exhausted 5xx budget, an
+            # exhausted 429 budget, and the client's own truncation and
+            # empty-answer errors. That is what ended two Gemma runs
+            # (BL-126). The client has already retried inside one call;
+            # this retries the call itself, after a wait long enough for
+            # a busy backend to settle.
+            #
+            # Not everything is worth retrying. A 401, 404 or 413 means
+            # the key, the model or the request is wrong, and repeating
+            # it only spends quota, so those still stop the run at once.
+            # The client's own errors carry no response at all.
+            status = e.response.status_code if e.response is not None else None
+            retryable = status is None or status == 429 or status >= 500
+
+            api_failures += 1
+
+            if not retryable or api_failures > API_ERROR_MAX_RETRIES:
+                raise
+
+            log(f"  API error ({status or 'no response'}: {str(e)[:100]}); "
+                f"waiting {NETWORK_RETRY_WAIT}s, "
+                f"retry {api_failures}/{API_ERROR_MAX_RETRIES}", error=True)
             time.sleep(NETWORK_RETRY_WAIT)
 
 
@@ -469,11 +504,6 @@ def run(log, model_flag, wait_on_quota):
 
     by_uid = {a["uid"]: a for a in first}
 
-    for condition in ("self", "oracle"):
-        rows = sorted(done[condition].values(), key=lambda r: r["seq"])
-        for row in rows:
-            triage_runner.write_back(mems[condition], by_uid[row["uid"]], flows[row["uid"]], row)
-
     total = PROTOCOL_ALERTS * len(ARMS)
     completed = sum(len(rows) for rows in done.values())
     log(f"{model_id}: {completed} of {total} verdicts already done; {total - completed} to go")
@@ -481,7 +511,23 @@ def run(log, model_flag, wait_on_quota):
     pace = config.GEMINI_PACE_SECONDS if provider == "gemini" else config.TRIAGE_PACE_SECONDS
     calls = 0
 
+    # Named so the handler below can report a failure that happens
+    # before the first alert is triaged, rather than raising NameError
+    # inside the error path.
+    uid = "(resume replay)"
+
     try:
+
+        # Rebuild each memory arm from the verdicts already on disk.
+        # Inside the try: this is the one step that only ever runs on a
+        # resume, so a failure here used to print a bare traceback
+        # instead of the protocol's own guidance.
+        for condition in ("self", "oracle"):
+            rows = sorted(done[condition].values(), key=lambda r: r["seq"])
+            for row in rows:
+                uid = row["uid"]
+                triage_runner.write_back(mems[condition], by_uid[uid], flows[uid], row)
+
         for seq, record in enumerate(first):
 
             uid = record["uid"]

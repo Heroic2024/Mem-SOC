@@ -397,6 +397,16 @@ def parse_llm_response(raw_text: str) -> dict:
             f"LLM response was not valid JSON: {e}\nRaw response:\n{raw_text}"
         )
 
+    if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict):
+
+        # Some models put the one verdict inside an array despite JSON
+        # mode. The object inside is the model's own answer, field for
+        # field; unwrapping it repairs nothing and guesses nothing, and
+        # every validation below still applies to it. A list of any
+        # other shape -- empty, several verdicts, or not objects -- is
+        # still an answer we cannot attribute, and still fails.
+        data = data[0]
+
     if not isinstance(data, dict):
         raise ValueError(
             f"LLM response was not a JSON object, got {type(data).__name__}.\n"
