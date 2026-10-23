@@ -34,6 +34,9 @@ Usage (from the repo root, with src/ on PYTHONPATH):
 import argparse
 import csv
 import json
+import math
+import random
+import statistics
 import sys
 from collections import Counter, defaultdict
 
@@ -206,6 +209,318 @@ def score(verdicts, ground_truth):
         "consistent_verdict": consistent_verdict,
         "consistent_category": consistent_category,
         "mean_latency_ms": sum(latencies) / len(latencies) if latencies else 0.0,
+    }
+
+
+# ----------------------------------------------------------------------
+# Additions below this line (2026-10-23): Wilson intervals, exact
+# McNemar, a real confusion matrix, the B1 escalation metric, and four
+# further extensions. Additive only, per CLAUDE.md's protected-harness
+# rule -- nothing above this line changed shape or behaviour, and every
+# existing metric's value is unchanged by anything below. See
+# docs/research-paper/README.md (the Person 3 execution plan) for why
+# each of these exists.
+# ----------------------------------------------------------------------
+
+Z_95 = 1.959963984540054  # two-sided 95% normal quantile
+
+
+def wilson_interval(successes, n, z=Z_95):
+    """
+    95% Wilson score interval for a proportion. statistics.NormalDist
+    is available (z above is its inv_cdf(0.975), computed once rather
+    than imported as a dependency), no scipy/statsmodels, per
+    work-split.md. Returns (lo, hi); (0.0, 0.0) if n == 0.
+    """
+
+    if n == 0:
+        return (0.0, 0.0)
+
+    phat = successes / n
+    denom = 1 + z * z / n
+    center = phat + z * z / (2 * n)
+    margin = z * math.sqrt(phat * (1 - phat) / n + z * z / (4 * n * n))
+
+    return ((center - margin) / denom, (center + margin) / denom)
+
+
+def exact_mcnemar(fixed, broken):
+    """
+    Exact two-sided McNemar p-value from the discordant pair counts
+    (fixed = B correct where A wasn't; broken = the reverse), via
+    math.comb only -- scipy/statsmodels are the rejected alternatives
+    (work-split.md). p = 2 * P(X <= min(fixed, broken)) for
+    X ~ Binomial(fixed + broken, 0.5), capped at 1.0.
+    """
+
+    n = fixed + broken
+
+    if n == 0:
+        return 1.0
+
+    k = min(fixed, broken)
+    cdf = sum(math.comb(n, i) for i in range(k + 1)) / (2 ** n)
+
+    return min(1.0, 2 * cdf)
+
+
+def _by_uid(verdicts):
+    return {row["uid"]: row for row in verdicts}
+
+
+def _correct_verdict(row, gt_row):
+    """True if this row's verdict matches ground truth (TP or TN)."""
+
+    truly_attack = gt_row["attack"] != "Benign"
+
+    if row["verdict"] == "true_positive":
+        return truly_attack
+    if row["verdict"] == "false_positive":
+        return not truly_attack
+
+    return False  # inconclusive is never "correct"
+
+
+def _correct_category(row, gt_row):
+    return row["attack_category"] == expected_category(gt_row)
+
+
+def paired_mcnemar(verdicts_a, verdicts_b, ground_truth, field="verdict"):
+    """
+    Paired exact McNemar test between two arms over their shared
+    alerts (joined on uid). `field`: "verdict" (correct escalate/
+    dismiss call) or "category" (correct attack family). Returns
+    fixed/broken counts and the exact p-value. This is what the Gemma
+    and Groq p1 write-ups each computed with a one-off script before
+    this function existed -- now reusable and testable in one place.
+    """
+
+    correct_fn = _correct_category if field == "category" else _correct_verdict
+
+    a_by_uid, b_by_uid = _by_uid(verdicts_a), _by_uid(verdicts_b)
+    fixed = broken = 0
+
+    for uid, a_row in a_by_uid.items():
+
+        b_row = b_by_uid.get(uid)
+        gt_row = ground_truth.get(uid)
+
+        if b_row is None or gt_row is None:
+            continue
+
+        a_ok = correct_fn(a_row, gt_row)
+        b_ok = correct_fn(b_row, gt_row)
+
+        if b_ok and not a_ok:
+            fixed += 1
+        elif a_ok and not b_ok:
+            broken += 1
+
+    return {
+        "fixed": fixed,
+        "broken": broken,
+        "p": exact_mcnemar(fixed, broken),
+    }
+
+
+def confusion_matrix(verdicts, ground_truth):
+    """
+    A real category confusion matrix: matrix[expected][predicted] =
+    count. BL-040 names the gap this fills -- score()'s own cat_errors
+    is a flat Counter of (expected, predicted) pairs that disagree
+    only; this is the full matrix, diagonal included.
+    """
+
+    matrix = defaultdict(Counter)
+
+    for row in verdicts:
+
+        gt_row = ground_truth.get(row["uid"])
+
+        if gt_row is None:
+            continue
+
+        matrix[expected_category(gt_row)][row["attack_category"]] += 1
+
+    return {k: dict(v) for k, v in matrix.items()}
+
+
+# The B1 tier split (decisions.md B1, tracked as BL-105): families that
+# warrant waking an analyst versus routine scanning/probing noise.
+MUST_ESCALATE_FAMILIES = {"Worms", "Backdoor", "Shellcode", "Exploits", "DoS", "Generic"}
+ROUTINE_FAMILIES = {"Reconnaissance", "Analysis", "Fuzzers"}
+
+
+def escalation_metrics(verdicts, ground_truth):
+    """
+    Escalation precision + must-escalate recall -- the B1 headline
+    metric. Needs a `priority` field ("escalate"/"routine") on each
+    verdict row, distinct from `verdict` and `attack_category`; no
+    real run's schema carries it yet (BL-106, blocked on sign-off,
+    since the prompt template is a protected component). Rows without
+    a `priority` field are skipped, so this returns all-zero on every
+    run collected so far -- it exists to be tested against synthetic
+    fixtures (tests/test_score_verdicts.py) now, and run for real the
+    moment BL-106 unblocks, per work-split.md's own instruction that
+    this is "developed against synthetic verdict files long before a
+    real run exists."
+    """
+
+    tp = fp = fn = tn = 0
+
+    for row in verdicts:
+
+        gt_row = ground_truth.get(row["uid"])
+        said = row.get("priority")
+
+        if gt_row is None or said not in ("escalate", "routine"):
+            continue
+
+        want = expected_category(gt_row)
+        true_tier = "escalate" if want in MUST_ESCALATE_FAMILIES else "routine"
+
+        if said == "escalate" and true_tier == "escalate":
+            tp += 1
+        elif said == "escalate" and true_tier == "routine":
+            fp += 1
+        elif said == "routine" and true_tier == "escalate":
+            fn += 1
+        else:
+            tn += 1
+
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+
+    return {
+        "escalation_precision": precision,
+        "must_escalate_recall": recall,
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "scored": tp + fp + fn + tn,
+    }
+
+
+def tier_split_recall(verdicts, ground_truth):
+    """
+    PROXY for the B1 escalation metric above -- not a substitute for
+    it. Uses only the existing `verdict` field (not a model-emitted
+    `priority`), split by the B1 tier mapping on the *ground-truth*
+    family. Answers a narrower question: does the model still catch
+    real attacks, broken out by whether that attack was must-escalate
+    or routine? It does not test whether the model can judge severity
+    itself -- that is what escalation_metrics() above is for, once
+    BL-106 unblocks. Computable today on every real run.
+    """
+
+    buckets = {"escalate": {"tp": 0, "fn": 0}, "routine": {"tp": 0, "fn": 0}}
+
+    for row in verdicts:
+
+        gt_row = ground_truth.get(row["uid"])
+
+        if gt_row is None or gt_row["attack"] == "Benign":
+            continue  # the tier split is only defined over real attacks
+
+        want = expected_category(gt_row)
+        tier = "escalate" if want in MUST_ESCALATE_FAMILIES else "routine"
+
+        if row["verdict"] == "true_positive":
+            buckets[tier]["tp"] += 1
+        elif row["verdict"] == "false_positive":
+            buckets[tier]["fn"] += 1
+
+    out = {}
+
+    for tier, c in buckets.items():
+        total = c["tp"] + c["fn"]
+        out[tier] = {"recall": c["tp"] / total if total else 0.0, "n": total, **c}
+
+    return out
+
+
+def cold_start_split(verdicts, ground_truth, warmup=10):
+    """
+    score() over the first `warmup` alerts (by seq, i.e. stream order)
+    versus the rest. Formalizes decisions.md C7's own recommendation --
+    "report the early alerts and the later alerts as two separate
+    figures instead" -- as a reusable function instead of a hand-built
+    chart per write-up.
+    """
+
+    ordered = sorted(verdicts, key=lambda r: r["seq"])
+
+    return {
+        "cold": score(ordered[:warmup], ground_truth),
+        "warm": score(ordered[warmup:], ground_truth),
+    }
+
+
+def paired_bootstrap_ci(verdicts_a, verdicts_b, ground_truth, metric="recall",
+                         n_boot=2000, seed=20261023):
+    """
+    95% CI on the paired difference (arm B's metric minus arm A's),
+    via bootstrap resampling of the shared alert set, with
+    replacement. McNemar says a gap is statistically real; this says
+    how big it reliably is. `metric`: any key score() returns, e.g.
+    "recall" or "cat_accuracy". `seed` makes this reproducible.
+    """
+
+    rng = random.Random(seed)
+    a_by_uid, b_by_uid = _by_uid(verdicts_a), _by_uid(verdicts_b)
+    uids = [u for u in a_by_uid if u in b_by_uid and u in ground_truth]
+
+    point = (
+        score(list(b_by_uid.values()), ground_truth)[metric]
+        - score(list(a_by_uid.values()), ground_truth)[metric]
+    )
+
+    if not uids:
+        return {"point": point, "ci_lo": point, "ci_hi": point, "n_boot": 0}
+
+    diffs = []
+
+    for _ in range(n_boot):
+
+        sample = rng.choices(uids, k=len(uids))
+        gt_sub = {u: ground_truth[u] for u in set(sample)}
+
+        sa = score([a_by_uid[u] for u in sample], gt_sub)[metric]
+        sb = score([b_by_uid[u] for u in sample], gt_sub)[metric]
+
+        diffs.append(sb - sa)
+
+    diffs.sort()
+    lo = diffs[int(0.025 * n_boot)]
+    hi = diffs[min(n_boot - 1, int(0.975 * n_boot))]
+
+    return {"point": point, "ci_lo": lo, "ci_hi": hi, "n_boot": n_boot}
+
+
+def cost_summary(verdicts):
+    """
+    Token usage per verdict, from the usage_* fields protocol_run.py
+    already writes into every row -- no schema change needed. Rows
+    without usage data (e.g. a non-protocol or pre-BL-121 run) are
+    silently skipped, so n_with_usage may be less than len(verdicts).
+    """
+
+    def collect(key):
+        return [r[key] for r in verdicts if r.get(key) is not None]
+
+    prompt_tokens = collect("usage_prompt_tokens")
+    output_tokens = collect("usage_output_tokens")
+    reasoning_tokens = collect("usage_reasoning_tokens")
+    total_tokens = collect("usage_total_tokens")
+
+    def mean(xs):
+        return statistics.fmean(xs) if xs else 0.0
+
+    return {
+        "n_with_usage": len(total_tokens),
+        "mean_prompt_tokens": mean(prompt_tokens),
+        "mean_output_tokens": mean(output_tokens),
+        "mean_reasoning_tokens": mean(reasoning_tokens),
+        "mean_total_tokens": mean(total_tokens),
+        "sum_total_tokens": sum(total_tokens),
     }
 
 
