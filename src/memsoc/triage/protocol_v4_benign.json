@@ -1,0 +1,943 @@
+{
+ "rule": {
+  "pool": "held-out rows (paths.HELD_OUT_ROWS), all features finite, Label == 0, not in generated_logs.jsonl (row_id)",
+  "hard_ranking": "binary detector attack probability, descending; ties by a random key from numpy SeedSequence(42).spawn(2)[0], assigned in row-number order",
+  "near_duplicates": "skip identical 48-feature vectors, and case text cosine >= 0.98 to an already chosen flow (embedding sentence-transformers/all-MiniLM-L6-v2 @ 1110a243fdf4706b3f48f1d95db1a4f5529b4d41)",
+  "hard_count": 100,
+  "hard_candidates_scored": 1000,
+  "hard_order": "numpy default_rng(42).permutation of the kept flows",
+  "random_count": 50,
+  "random_draw": "numpy default_rng(SeedSequence(42).spawn(2)[1]).permutation of the pool sorted by row number, skipping the hard set",
+  "shown_binary_confidence": 1.0,
+  "uid_format": "C<FLOW_START_MILLISECONDS>-<L4_SRC_PORT>-<seq>, seq from 120001"
+ },
+ "skipped_as_duplicates": {
+  "identical_features": 1,
+  "near_duplicate_text": 170
+ },
+ "inputs_sha256": {
+  "dataset": "4ebb97bd74412d566137d95a6fc3ffd8f374f1cf8cfe204d007848e7a668f9b5",
+  "heldout_rows": "46c88798cf4fd5672699f69a187a0eae60bf699cd4afff38370918b797fbf1df",
+  "generated_logs": "74869ad4b38d5a8af2a005a924fd6a12d1e63115723739dea49153a27fe40422"
+ },
+ "sets": {
+  "hard": {
+   "count": 100,
+   "uid_list_sha256": "a941d98209e6a6f0be08ce219b0e3939c92cf24e0baeabf448068e2373118a21",
+   "records_sha256": "8241aaa6ba7633d8a3950616a68e899bdfb95cd1e78f58aff42efa442421f085",
+   "flows_sha256": "e1a3a2bef2fde4bd4607d86fedbf6b4ddfad50b9072ca5c214924ea78588fe0f",
+   "ground_truth_sha256": "d69ccd2b8a7d650c02969ef61f25e86784f3a7182ac461969a99519331058c92",
+   "flows_in_run_order": [
+    {
+     "uid": "C1421960079680-24355-120001",
+     "row_id": 2039919,
+     "rank": 147,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424249681191-0-120002",
+     "row_id": 423199,
+     "rank": 69,
+     "attack_probability": 6.22121355327351e-05
+    },
+    {
+     "uid": "C1421930893172-64448-120003",
+     "row_id": 1324774,
+     "rank": 141,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421931907979-860-120004",
+     "row_id": 1353642,
+     "rank": 63,
+     "attack_probability": 0.00013307312944674655
+    },
+    {
+     "uid": "C1421953218136-44805-120005",
+     "row_id": 1887705,
+     "rank": 89,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421965227707-51149-120006",
+     "row_id": 2173188,
+     "rank": 113,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424251679573-53977-120007",
+     "row_id": 656803,
+     "rank": 130,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421955440717-30701-120008",
+     "row_id": 1924688,
+     "rank": 79,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424228170843-47235-120009",
+     "row_id": 208074,
+     "rank": 251,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424232629605-42048-120010",
+     "row_id": 101649,
+     "rank": 186,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424236052635-5004-120011",
+     "row_id": 1092298,
+     "rank": 2,
+     "attack_probability": 0.5901935038311512
+    },
+    {
+     "uid": "C1424239325582-11133-120012",
+     "row_id": 452183,
+     "rank": 77,
+     "attack_probability": 2.7481627121436696e-05
+    },
+    {
+     "uid": "C1424235127007-25-120013",
+     "row_id": 1029836,
+     "rank": 76,
+     "attack_probability": 3.492774011091949e-05
+    },
+    {
+     "uid": "C1421951177035-4279-120014",
+     "row_id": 1838426,
+     "rank": 132,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421957882755-13607-120015",
+     "row_id": 1982787,
+     "rank": 220,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421936541128-55075-120016",
+     "row_id": 1476970,
+     "rank": 270,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424237239570-45296-120017",
+     "row_id": 864849,
+     "rank": 131,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424254979919-27290-120018",
+     "row_id": 732497,
+     "rank": 153,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424253635392-60599-120019",
+     "row_id": 86923,
+     "rank": 5,
+     "attack_probability": 0.035421206874425
+    },
+    {
+     "uid": "C1424245759547-64679-120020",
+     "row_id": 488790,
+     "rank": 266,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424260987718-12690-120021",
+     "row_id": 24331,
+     "rank": 255,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424231072323-1504-120022",
+     "row_id": 255137,
+     "rank": 95,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424233669425-51450-120023",
+     "row_id": 584789,
+     "rank": 80,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421970102525-33541-120024",
+     "row_id": 2295416,
+     "rank": 211,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424247502043-29215-120025",
+     "row_id": 943360,
+     "rank": 8,
+     "attack_probability": 0.0018982067777503023
+    },
+    {
+     "uid": "C1424254286709-24824-120026",
+     "row_id": 248193,
+     "rank": 144,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421956436751-34482-120027",
+     "row_id": 1948872,
+     "rank": 208,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421966896978-58059-120028",
+     "row_id": 2212830,
+     "rank": 78,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421931621179-24337-120029",
+     "row_id": 1345145,
+     "rank": 199,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424235410645-46756-120030",
+     "row_id": 829667,
+     "rank": 205,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421969678114-21997-120031",
+     "row_id": 2283956,
+     "rank": 97,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424254680978-2344-120032",
+     "row_id": 744087,
+     "rank": 0,
+     "attack_probability": 0.9988341929081896
+    },
+    {
+     "uid": "C1424235988752-6497-120033",
+     "row_id": 1169908,
+     "rank": 232,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421961699510-1491-120034",
+     "row_id": 2080020,
+     "rank": 121,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424239667979-80-120035",
+     "row_id": 2204,
+     "rank": 11,
+     "attack_probability": 0.0010373822130164793
+    },
+    {
+     "uid": "C1424244416892-35748-120036",
+     "row_id": 723139,
+     "rank": 81,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421965132651-33712-120037",
+     "row_id": 2170452,
+     "rank": 184,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424234551862-62570-120038",
+     "row_id": 636381,
+     "rank": 120,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421930775799-179-120039",
+     "row_id": 1321433,
+     "rank": 19,
+     "attack_probability": 0.00019854557712371606
+    },
+    {
+     "uid": "C1421966030169-28300-120040",
+     "row_id": 2191925,
+     "rank": 99,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424221846252-5073-120041",
+     "row_id": 695519,
+     "rank": 248,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424221333572-55417-120042",
+     "row_id": 700731,
+     "rank": 101,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421952290471-31342-120043",
+     "row_id": 1865266,
+     "rank": 242,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424247456488-61998-120044",
+     "row_id": 1081806,
+     "rank": 6,
+     "attack_probability": 0.024298759133839432
+    },
+    {
+     "uid": "C1424252838870-54884-120045",
+     "row_id": 454518,
+     "rank": 176,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421929285469-1723-120046",
+     "row_id": 1282103,
+     "rank": 1,
+     "attack_probability": 0.9825759793192201
+    },
+    {
+     "uid": "C1421965451368-40084-120047",
+     "row_id": 2178660,
+     "rank": 261,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421954226724-47561-120048",
+     "row_id": 1914534,
+     "rank": 225,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421971359238-33740-120049",
+     "row_id": 2328370,
+     "rank": 155,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421933428810-52170-120050",
+     "row_id": 1392974,
+     "rank": 4,
+     "attack_probability": 0.054121733462069464
+    },
+    {
+     "uid": "C1424223514576-15768-120051",
+     "row_id": 122489,
+     "rank": 222,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424238304485-63197-120052",
+     "row_id": 632331,
+     "rank": 254,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424221093060-548-120053",
+     "row_id": 44555,
+     "rank": 68,
+     "attack_probability": 6.540893032703425e-05
+    },
+    {
+     "uid": "C1421931575118-62907-120054",
+     "row_id": 1343755,
+     "rank": 237,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424245546094-31845-120055",
+     "row_id": 373016,
+     "rank": 114,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421962278316-2166-120056",
+     "row_id": 2094955,
+     "rank": 192,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421963635331-48270-120057",
+     "row_id": 2132065,
+     "rank": 86,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424237161670-22990-120058",
+     "row_id": 525423,
+     "rank": 198,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424258085644-13412-120059",
+     "row_id": 756001,
+     "rank": 74,
+     "attack_probability": 3.729784655838643e-05
+    },
+    {
+     "uid": "C1424245148062-44571-120060",
+     "row_id": 562009,
+     "rank": 263,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421946584428-36410-120061",
+     "row_id": 1722920,
+     "rank": 177,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421934436382-179-120062",
+     "row_id": 1419715,
+     "rank": 17,
+     "attack_probability": 0.00021796700169247579
+    },
+    {
+     "uid": "C1421934826025-38088-120063",
+     "row_id": 1430674,
+     "rank": 128,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421936857354-49155-120064",
+     "row_id": 1484923,
+     "rank": 136,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424256743700-12881-120065",
+     "row_id": 1146099,
+     "rank": 150,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421937748267-8757-120066",
+     "row_id": 1506517,
+     "rank": 10,
+     "attack_probability": 0.00115555295077682
+    },
+    {
+     "uid": "C1424232049285-54759-120067",
+     "row_id": 913860,
+     "rank": 154,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421937966271-18592-120068",
+     "row_id": 1512201,
+     "rank": 85,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424250192952-49074-120069",
+     "row_id": 990681,
+     "rank": 188,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421934413235-16090-120070",
+     "row_id": 1419022,
+     "rank": 18,
+     "attack_probability": 0.00020300411151343565
+    },
+    {
+     "uid": "C1421965760160-2228-120071",
+     "row_id": 2186741,
+     "rank": 116,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424240251212-6157-120072",
+     "row_id": 916843,
+     "rank": 221,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424259799706-22416-120073",
+     "row_id": 14090,
+     "rank": 163,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424246107594-28152-120074",
+     "row_id": 1054855,
+     "rank": 90,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424234148731-47131-120075",
+     "row_id": 187386,
+     "rank": 82,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421963842157-6879-120076",
+     "row_id": 2137877,
+     "rank": 146,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421940998854-34556-120077",
+     "row_id": 1585023,
+     "rank": 197,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421954192777-5568-120078",
+     "row_id": 1913681,
+     "rank": 239,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424229110686-57791-120079",
+     "row_id": 169114,
+     "rank": 268,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424244876991-31944-120080",
+     "row_id": 969576,
+     "rank": 135,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424262111619-50333-120081",
+     "row_id": 27325,
+     "rank": 129,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424254282852-56837-120082",
+     "row_id": 248677,
+     "rank": 7,
+     "attack_probability": 0.002031187588894613
+    },
+    {
+     "uid": "C1424260791112-30167-120083",
+     "row_id": 645692,
+     "rank": 244,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421934368517-179-120084",
+     "row_id": 1417772,
+     "rank": 12,
+     "attack_probability": 0.0003578094261229872
+    },
+    {
+     "uid": "C1424235550949-58212-120085",
+     "row_id": 970675,
+     "rank": 227,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421968189393-63517-120086",
+     "row_id": 2244601,
+     "rank": 112,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424248919246-110-120087",
+     "row_id": 972486,
+     "rank": 73,
+     "attack_probability": 3.906038182597447e-05
+    },
+    {
+     "uid": "C1421931812724-80-120088",
+     "row_id": 1350688,
+     "rank": 67,
+     "attack_probability": 8.400269977876288e-05
+    },
+    {
+     "uid": "C1421962207223-48800-120089",
+     "row_id": 2093226,
+     "rank": 93,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424260630200-28389-120090",
+     "row_id": 976292,
+     "rank": 158,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424259625584-35356-120091",
+     "row_id": 782579,
+     "rank": 123,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421929806001-0-120092",
+     "row_id": 1295394,
+     "rank": 13,
+     "attack_probability": 0.00032722649358302977
+    },
+    {
+     "uid": "C1421962938421-32407-120093",
+     "row_id": 2112118,
+     "rank": 133,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421941738223-7497-120094",
+     "row_id": 1601835,
+     "rank": 15,
+     "attack_probability": 0.00029250213906115884
+    },
+    {
+     "uid": "C1421928558607-21-120095",
+     "row_id": 1263778,
+     "rank": 14,
+     "attack_probability": 0.0003037166783370335
+    },
+    {
+     "uid": "C1421969648414-13875-120096",
+     "row_id": 2282987,
+     "rank": 161,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424257011248-62283-120097",
+     "row_id": 871044,
+     "rank": 94,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421928477375-11397-120098",
+     "row_id": 1261403,
+     "rank": 160,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421941717622-52337-120099",
+     "row_id": 1601408,
+     "rank": 201,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424242724383-53-120100",
+     "row_id": 1132707,
+     "rank": 9,
+     "attack_probability": 0.001156949077669615
+    }
+   ]
+  },
+  "random": {
+   "count": 50,
+   "uid_list_sha256": "7f3a2d365e3182aede6cc937dfffe465c0e006f22f13391be049df41a4c17fe0",
+   "records_sha256": "d92467f2a8efee9a4a8dc7cf87c8e602bb39c7a29bd1e679779785258a14cf99",
+   "flows_sha256": "9d038fdd6cf9d0e5ba9b5f46661461849aad1e62bd1128ec44e5a6db29b1fa6a",
+   "ground_truth_sha256": "2c58a66bdbf523938feaf84817d2f53d52912bb4da922b601ed63df371f1a059",
+   "flows_in_run_order": [
+    {
+     "uid": "C1421956880456-1585-120101",
+     "row_id": 1960060,
+     "rank": 0,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421934500606-44335-120102",
+     "row_id": 1421365,
+     "rank": 1,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424258072574-8655-120103",
+     "row_id": 755597,
+     "rank": 2,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424220948993-34327-120104",
+     "row_id": 212277,
+     "rank": 3,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421966183987-50208-120105",
+     "row_id": 2196173,
+     "rank": 4,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424260715400-40873-120106",
+     "row_id": 182017,
+     "rank": 5,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421956697233-28225-120107",
+     "row_id": 1955465,
+     "rank": 6,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421951470761-52101-120108",
+     "row_id": 1846590,
+     "rank": 7,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421967969463-21925-120109",
+     "row_id": 2238777,
+     "rank": 8,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421964650845-17954-120110",
+     "row_id": 2158609,
+     "rank": 9,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421972477958-30035-120111",
+     "row_id": 2358946,
+     "rank": 10,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421931455935-44901-120112",
+     "row_id": 1340050,
+     "rank": 11,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421957385827-20585-120113",
+     "row_id": 1971930,
+     "rank": 12,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421946086384-3357-120114",
+     "row_id": 1709810,
+     "rank": 13,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424261395512-40661-120115",
+     "row_id": 312460,
+     "rank": 14,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424230007568-9037-120116",
+     "row_id": 478153,
+     "rank": 15,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421968313505-24223-120117",
+     "row_id": 2247957,
+     "rank": 16,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421934046517-51103-120118",
+     "row_id": 1408540,
+     "rank": 17,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421967934790-10220-120119",
+     "row_id": 2237982,
+     "rank": 18,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424255047720-30502-120120",
+     "row_id": 70762,
+     "rank": 19,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424228047336-8797-120121",
+     "row_id": 486097,
+     "rank": 20,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421959303869-12365-120122",
+     "row_id": 2018747,
+     "rank": 21,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424260199292-48611-120123",
+     "row_id": 323015,
+     "rank": 22,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424239244285-15506-120124",
+     "row_id": 781085,
+     "rank": 23,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421945149272-58768-120125",
+     "row_id": 1684121,
+     "rank": 24,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424254990328-60826-120126",
+     "row_id": 732917,
+     "rank": 25,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421932732598-13814-120127",
+     "row_id": 1375982,
+     "rank": 26,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421966449069-54343-120128",
+     "row_id": 2202525,
+     "rank": 27,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424260629607-36696-120129",
+     "row_id": 1138789,
+     "rank": 28,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421930716570-50406-120130",
+     "row_id": 1319615,
+     "rank": 29,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424239710704-19825-120131",
+     "row_id": 809169,
+     "rank": 30,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421931015172-6325-120132",
+     "row_id": 1328496,
+     "rank": 31,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421946738112-1869-120133",
+     "row_id": 1727441,
+     "rank": 32,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424245452197-16229-120134",
+     "row_id": 847409,
+     "rank": 33,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424254818527-60274-120135",
+     "row_id": 1095641,
+     "rank": 34,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421946325586-27862-120136",
+     "row_id": 1716704,
+     "rank": 35,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421947075200-53493-120137",
+     "row_id": 1736027,
+     "rank": 36,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421969240126-6876-120138",
+     "row_id": 2269982,
+     "rank": 37,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421935377019-56403-120139",
+     "row_id": 1446541,
+     "rank": 38,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421939437695-44062-120140",
+     "row_id": 1546790,
+     "rank": 39,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421930229661-1883-120141",
+     "row_id": 1308095,
+     "rank": 40,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424219889344-6604-120142",
+     "row_id": 994292,
+     "rank": 41,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421938593279-40183-120143",
+     "row_id": 1526334,
+     "rank": 42,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424230486212-3502-120144",
+     "row_id": 106605,
+     "rank": 43,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421928422735-14242-120145",
+     "row_id": 1259686,
+     "rank": 44,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424232637908-27511-120146",
+     "row_id": 381602,
+     "rank": 45,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424239798710-54558-120147",
+     "row_id": 154621,
+     "rank": 46,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424262358624-1703-120148",
+     "row_id": 161842,
+     "rank": 47,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1421930101384-35725-120149",
+     "row_id": 1304179,
+     "rank": 48,
+     "attack_probability": 2.230745395176634e-05
+    },
+    {
+     "uid": "C1424230381976-5156-120150",
+     "row_id": 1034837,
+     "rank": 49,
+     "attack_probability": 2.230745395176634e-05
+    }
+   ]
+  }
+ }
+}

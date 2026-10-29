@@ -158,4 +158,33 @@ still fixed before any result is seen.
 
 ## 8. Addenda
 
-Dated, in order, each one settling a §7 item. None yet.
+Dated, in order, each one settling a §7 item.
+
+### 8.1 (2026-10-29, Person 2): the benign selection rule (§3.4)
+
+Fixed and committed with the list itself, before any benign run. The code is
+`src/memsoc/triage/protocol_v4_benign.py`; the list and every hash are in
+`src/memsoc/triage/protocol_v4_benign.json`. The runner refuses a benign run unless that file is committed
+and the built alert files match it.
+
+| Item | Rule |
+|---|---|
+| **Pool** | Held-out rows only (`artifacts/heldout_rows.npy`, re-derived 2026-10-29 with every gated fingerprint figure matching), every feature finite, true label benign, and **not** one of the 120,000 flows already in the stream. 262,699 rows. |
+| **Ranking** | The frozen binary detector's attack probability, highest first. **Ties** are broken by a random key from numpy `SeedSequence(42).spawn(2)[0]`, assigned in row-number order (BL-180). |
+| **Near-duplicates** | Walking the ranking, a flow is skipped if its 48 features equal an already chosen flow's, or if its case text embeds at cosine ≥ 0.98 to an already chosen flow's (the memory's own embedding model). 1 identical and 170 near-duplicate flows were skipped. |
+| **Order in the stream** | The 100 kept flows, shuffled once with numpy `default_rng(42)`. They follow the 165 attacks. |
+| **Random set (optional)** | 50 flows drawn from the same pool with numpy `SeedSequence(42).spawn(2)[1]`, skipping the hard 100. Run ids `armA-randbenign-…` and `bself-randbenign-gemma4-26b-p4`. Run only if time allows. |
+| **Final lists** | Hard 100: uid list SHA-256 `a941d98209e6a6f0be08ce219b0e3939c92cf24e0baeabf448068e2373118a21`. Random 50: `7f3a2d365e3182aede6cc937dfffe465c0e006f22f13391be049df41a4c17fe0`. |
+
+**Two things the paper must state with the result:**
+
+1. **Most of the "hardest 100" are not harder than other benign flows.** The detector is very sure about
+   benign traffic: only 4 flows in the pool score ≥ 0.5, 12 score ≥ 0.001, and from about rank 70 every flow
+   shares the same floor score. 74 of the 100 come from that tie, chosen by the seeded key (BL-180). The
+   4 flows at ≥ 0.5 are real detector false alarms on unseen traffic (BL-182).
+2. **The "Attack/benign score" line shows 1.0, not the detector's real value** (BL-181). Every one of the
+   1,135 real alerts shows 1.0 or 0.9999; a benign flow's real value would be the only other number and
+   would give the answer away. This departs from "detector unchanged" for this one line only. The family
+   guess and the SHAP block are the detector's real output. The real attack probability, prediction and
+   confidence are logged with every alert and verdict under `v4_benign`. Confirmed by Aadit; awaiting the
+   supervisor's confirmation.

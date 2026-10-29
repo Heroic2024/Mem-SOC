@@ -135,6 +135,13 @@ GROUND_TRUTH = os.path.join(ARTIFACTS_DIR, "ground_truth.csv")
 HELD_OUT_ROWS = os.path.join(ARTIFACTS_DIR, "heldout_rows.npy")
 HELD_OUT_MANIFEST = os.path.join(ARTIFACTS_DIR, "heldout_manifest.json")
 
+# Protocol v4 (supplementary). P3_GEMMA_RESULTS is the received, checksummed
+# p3 package -- a read-only reference that v4 copies from and never writes
+# into. PROTOCOL_V4_DIR holds the benign alerts built by
+# triage/protocol_v4_benign.py.
+P3_GEMMA_RESULTS = os.path.join(ARTIFACTS_DIR, "shared", "memsoc-p3-gemma4-26b-results")
+PROTOCOL_V4_DIR = os.path.join(ARTIFACTS_DIR, "protocol_v4")
+
 STREAM_INDEX = os.path.join(ARTIFACTS_DIR, "stream_index.npy")
 STREAM_STATE = os.path.join(ARTIFACTS_DIR, "stream_state.json")
 STREAM_LOG = os.path.join(ARTIFACTS_DIR, "stream_log.jsonl")

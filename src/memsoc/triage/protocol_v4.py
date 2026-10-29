@@ -7,11 +7,13 @@ Test protocol v4 -- the supplementary memory experiments, Gemma only.
     python -m memsoc.triage.protocol_v4 --experiment <name> --status
     python -m memsoc.triage.protocol_v4 --experiment <name> --verify
 
-<name> is a key of EXPERIMENTS. Each experiment is ONE memory arm run
-over the same 165 alerts as protocol v3, and is compared against the
-frozen v3 results (armA/bself/boracle-gemma4-26b-p3), which this module
-never opens for writing. Those results stay the main experiment; every
-run made here is supplementary.
+<name> is a key of EXPERIMENTS. Each experiment is ONE memory arm, run
+either over the same 165 alerts as protocol v3 or over a benign set
+built by protocol_v4_benign.py, and is compared against the frozen v3
+results (armA/bself/boracle-gemma4-26b-p3), which this module never
+opens for writing. Those results stay the main experiment; every run
+made here is supplementary. The B-self benign arms start from a copy of
+the p3 B-self store (attack-primed memory) and keep writing back.
 
 How this relates to protocol_run.py (v3). Everything that decides a
 verdict is shared, not copied: the same environment and data checks,
@@ -37,7 +39,9 @@ Exit codes: 0 finished or check passed, 1 an error or a failed check,
 """
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -55,9 +59,24 @@ PROTOCOL_TAG = "memsoc-protocol-v4"
 # Gemma only: v4 extends the Gemma p3 result and nothing else.
 MODEL = "gemma-4-26b"
 
-# experiment -> (memory condition, run-id prefix). One arm per experiment.
+# One arm per experiment. "alerts" names the alerts it triages: "p3" is
+# the first 165 stream alerts; "hard" and "random" are the benign sets
+# built by protocol_v4_benign.py. "seed_store" is a p3 memory store the
+# run starts from, copied, never opened in place.
 EXPERIMENTS = {
-    "shuffled": ("shuffled", "bshuf"),
+    "shuffled": {"condition": "shuffled", "prefix": "bshuf", "alerts": "p3"},
+    "benign-armA": {"condition": "off", "prefix": "armA-benign", "alerts": "hard"},
+    "benign-bself": {"condition": "self", "prefix": "bself-benign", "alerts": "hard",
+                     "seed_store": "bself-gemma4-26b-p3"},
+    "random-armA": {"condition": "off", "prefix": "armA-randbenign", "alerts": "random"},
+    "random-bself": {"condition": "self", "prefix": "bself-randbenign", "alerts": "random",
+                     "seed_store": "bself-gemma4-26b-p3"},
+}
+
+# The p3 B-self store as received and verified (BL-171): its case count
+# and the SHA-256 of its chroma.sqlite3. A seeded run refuses any other.
+SEED_STORES = {
+    "bself-gemma4-26b-p3": (165, "fd5ba38c3143d7918d4685aba762b1b1fccee070c0ea4386b3ebe67c1de31d55"),
 }
 
 # Committed before the first real run, so it is time-stamped by git.
@@ -72,6 +91,7 @@ _DRY_RUN_TOLERATED = (
     "git checkout is the protocol tag",
     "pre-registration note is committed",
     "no local changes to src/, tests/, requirements/",
+    "benign list is committed",
 )
 
 
@@ -81,7 +101,7 @@ _DRY_RUN_TOLERATED = (
 
 def _run_id(experiment, dry_run=False):
 
-    _, prefix = EXPERIMENTS[experiment]
+    prefix = EXPERIMENTS[experiment]["prefix"]
     _, _, tag = protocol_run.MODELS[MODEL]
 
     return f"{prefix}-{tag}-{PROTOCOL}" + ("-dryrun" if dry_run else "")
@@ -93,22 +113,71 @@ def _alert_order_sha256(alerts):
     return hashlib.sha256("\n".join(a["uid"] for a in alerts).encode()).hexdigest()
 
 
-def _alerts(loaded, dry_run):
+def _alerts(experiment, loaded, dry_run):
+    """
+    (alerts in run order, flows by uid, seq of the first alert).
 
-    first = loaded["first"]
+    Benign alerts are numbered on from the 165 attacks, so in a seeded
+    store their cases follow the p3 cases rather than reusing their seqs.
+    """
 
-    return first[:DRY_RUN_ALERTS] if dry_run else first
+    source = EXPERIMENTS[experiment]["alerts"]
+
+    if source == "p3":
+        alerts, flows, start = loaded["first"], loaded["flows"], 0
+    else:
+        from memsoc.triage import protocol_v4_benign
+        alerts, flows = protocol_v4_benign.load(source)
+        start = protocol_run.PROTOCOL_ALERTS
+
+    return (alerts[:DRY_RUN_ALERTS] if dry_run else alerts), flows, start
+
+
+def _seed_memory(log, experiment, run_id):
+    """
+    Seeded experiments only. Copy the verified p3 store to this run's
+    store before it is first opened, checking the source and the copy
+    against SEED_STORES. A resumed run already has its store: no copy.
+    """
+
+    import shutil
+
+    seed = EXPERIMENTS[experiment].get("seed_store")
+    target = Path(paths.memory_store(run_id))
+
+    if not seed or target.exists():
+        return
+
+    source = Path(paths.P3_GEMMA_RESULTS) / "memory" / seed
+    _, wanted = SEED_STORES[seed]
+
+    found = protocol_run._sha256(source / "chroma.sqlite3") if source.exists() else "missing"
+
+    if found != wanted:
+        log(f"ERROR: seed store {source} has chroma.sqlite3 {found}, expected {wanted}.", error=True)
+        sys.exit(1)
+
+    shutil.copytree(source, target)
+
+    copied = protocol_run._sha256(target / "chroma.sqlite3")
+
+    if copied != wanted:
+        log(f"ERROR: the copy at {target} has chroma.sqlite3 {copied}, expected {wanted}.", error=True)
+        sys.exit(1)
+
+    log(f"Seeded {run_id} from {seed}: chroma.sqlite3 {copied}")
 
 
 # ----------------------------------------------------------------------
 # Checks
 # ----------------------------------------------------------------------
 
-def _checks(with_api, dry_run):
+def _checks(with_api, dry_run, experiment=None):
     """
     The v3 checks, with v3's tag check replaced by v4's, plus the
-    pre-registration gate. Under --dry-run the tag, note and clean-tree
-    checks warn instead of failing; every other check still fails.
+    pre-registration gate and, for a benign experiment, the benign list.
+    Under --dry-run the tag, note, list-committed and clean-tree checks
+    warn instead of failing; every other check still fails.
     """
 
     results, loaded = protocol_run._checks(MODEL, with_api)
@@ -129,6 +198,20 @@ def _checks(with_api, dry_run):
     add("pre-registration note is committed", bool(tracked) and unchanged,
         note_commit or f"{PREREGISTRATION} not committed")
 
+    source = EXPERIMENTS[experiment]["alerts"] if experiment else "p3"
+
+    if source != "p3":
+
+        from memsoc.triage import protocol_v4_benign
+
+        listing = str(protocol_v4_benign.MANIFEST.relative_to(paths.ROOT)).replace("\\", "/")
+        committed = (bool(protocol_run._git("ls-files", "--error-unmatch", listing))
+                     and protocol_run._git("status", "--porcelain", "--", listing) == "")
+        add("benign list is committed", committed, listing)
+
+        ok, detail = protocol_v4_benign.check(source)
+        add(f"{source} benign files match the list", ok, detail)
+
     if dry_run:
         results = [
             (name, "WARN" if status == "FAIL" and name in _DRY_RUN_TOLERATED else status, detail)
@@ -144,7 +227,8 @@ def _checks(with_api, dry_run):
 
 def _run_config(experiment, run_id, alerts, dry_run):
 
-    condition, _ = EXPERIMENTS[experiment]
+    condition = EXPERIMENTS[experiment]["condition"]
+    seed = EXPERIMENTS[experiment].get("seed_store")
 
     current = protocol_run._run_config(MODEL, run_id, condition)
 
@@ -154,6 +238,9 @@ def _run_config(experiment, run_id, alerts, dry_run):
         "experiment": experiment,
         "dry_run": dry_run,
         "alerts": len(alerts),
+        "alert_source": EXPERIMENTS[experiment]["alerts"],
+        "seed_store": seed,
+        "seed_store_sha256": SEED_STORES[seed][1] if seed else None,
         "arm_order": [condition],
         "alert_order_sha256": _alert_order_sha256(alerts),
         "preregistration": protocol_run._git("log", "-1", "--format=%H", "--", PREREGISTRATION),
@@ -198,22 +285,33 @@ def run(log, experiment, wait_on_quota, dry_run=False):
     from memsoc.memory import open_memory
     from memsoc.triage import config, llm_client, triage_runner
 
-    results, loaded = _checks(with_api=False, dry_run=dry_run)
+    results, loaded = _checks(with_api=False, dry_run=dry_run, experiment=experiment)
 
     if not protocol_run._print_checks(log, results):
         log("Not starting: fix the FAIL lines above.", error=True)
         sys.exit(1)
 
-    condition, _ = EXPERIMENTS[experiment]
+    condition = EXPERIMENTS[experiment]["condition"]
+    seed = EXPERIMENTS[experiment].get("seed_store")
     run_id = _run_id(experiment, dry_run)
-    alerts, flows = _alerts(loaded, dry_run), loaded["flows"]
+    alerts, flows, start = _alerts(experiment, loaded, dry_run)
     verdicts_path = protocol_run._verdicts_path(run_id)
 
     _ensure_run_config(log, experiment, run_id, alerts, dry_run)
+    _seed_memory(log, experiment, run_id)
 
     mem = open_memory(run_id, condition)
     done = triage_runner.load_done_rows(verdicts_path)
     by_uid = {a["uid"]: a for a in alerts}
+
+    if seed:
+        wanted = SEED_STORES[seed][0] + len(done)
+        count = mem.collection.count()
+        if count != wanted:
+            log(f"ERROR: {run_id} store holds {count} cases, expected {wanted} "
+                f"({SEED_STORES[seed][0]} seeded + {len(done)} written).", error=True)
+            sys.exit(1)
+        log(f"{run_id}: store holds {count} cases as expected")
 
     total = len(alerts)
     completed = len(done)
@@ -230,7 +328,7 @@ def run(log, experiment, wait_on_quota, dry_run=False):
             uid = row["uid"]
             triage_runner.write_back(mem, by_uid[uid], flows[uid], row)
 
-        for seq, record in enumerate(alerts):
+        for seq, record in enumerate(alerts, start=start):
 
             uid = record["uid"]
 
@@ -261,12 +359,16 @@ def run(log, experiment, wait_on_quota, dry_run=False):
             row["protocol"] = PROTOCOL
             row["experiment"] = experiment
 
+            # Benign only: the real detector figures beside the shown score.
+            if "v4_benign" in record:
+                row["v4_benign"] = record["v4_benign"]
+
             triage_runner.append_verdict(row, verdicts_path)
             triage_runner.write_back(mem, record, flows[uid], row)
             done[uid] = row
             completed += 1
 
-            log(f"[{completed}/{total}] alert {seq + 1}/{total} {condition} "
+            log(f"[{completed}/{total}] alert {seq - start + 1}/{total} {condition} "
                 f"verdict={row['verdict']} category={row['attack_category']} "
                 f"conf={row['confidence']} precedents={row['precedent_count']} "
                 f"tokens={row.get('usage_total_tokens')} {row['latency_ms'] / 1000:.0f}s")
@@ -290,15 +392,30 @@ def run(log, experiment, wait_on_quota, dry_run=False):
 # Status, verify
 # ----------------------------------------------------------------------
 
+def _expected(experiment, dry_run):
+    """(alert count, seq of the first alert) a finished run must have."""
+
+    source = EXPERIMENTS[experiment]["alerts"]
+
+    if source == "p3":
+        total, start = protocol_run.PROTOCOL_ALERTS, 0
+    else:
+        from memsoc.triage import protocol_v4_benign
+        manifest = json.loads(protocol_v4_benign.MANIFEST.read_text(encoding="utf-8"))
+        total, start = manifest["sets"][source]["count"], protocol_run.PROTOCOL_ALERTS
+
+    return (DRY_RUN_ALERTS if dry_run else total), start
+
+
 def status(log, experiment, dry_run=False):
 
     from memsoc.triage import triage_runner
 
     run_id = _run_id(experiment, dry_run)
     rows = triage_runner.load_done_rows(protocol_run._verdicts_path(run_id))
-    total = DRY_RUN_ALERTS if dry_run else protocol_run.PROTOCOL_ALERTS
+    total, _ = _expected(experiment, dry_run)
 
-    log(f"  {run_id:28} {len(rows):3} of {total} verdicts")
+    log(f"  {run_id:34} {len(rows):3} of {total} verdicts")
 
 
 def _verify_shuffles(add, log, run_id, by_seq):
@@ -351,12 +468,14 @@ def _verify_shuffles(add, log, run_id, by_seq):
 
 def verify(log, experiment, dry_run=False):
 
-    from memsoc.triage import triage_runner
+    from memsoc.triage import score_verdicts, triage_runner
 
-    condition, _ = EXPERIMENTS[experiment]
+    condition = EXPERIMENTS[experiment]["condition"]
+    source = EXPERIMENTS[experiment]["alerts"]
+    seed = EXPERIMENTS[experiment].get("seed_store")
     _, model_id, _ = protocol_run.MODELS[MODEL]
     run_id = _run_id(experiment, dry_run)
-    total = DRY_RUN_ALERTS if dry_run else protocol_run.PROTOCOL_ALERTS
+    total, start = _expected(experiment, dry_run)
     results = []
 
     def add(name, ok, detail="", warn=False):
@@ -365,7 +484,8 @@ def verify(log, experiment, dry_run=False):
     verdicts_path = protocol_run._verdicts_path(run_id)
     by_seq = {r["seq"]: r for r in triage_runner.load_done_rows(verdicts_path).values()}
 
-    add(f"{run_id}: {total} verdicts", sorted(by_seq) == list(range(total)), f"{len(by_seq)} found")
+    add(f"{run_id}: {total} verdicts", sorted(by_seq) == list(range(start, start + total)),
+        f"{len(by_seq)} found")
     add(f"{run_id}: one model", {r.get("model_id") for r in by_seq.values()} == {model_id},
         ", ".join(sorted({str(r.get('model_id')) for r in by_seq.values()})))
 
@@ -373,15 +493,29 @@ def verify(log, experiment, dry_run=False):
     recorded = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
     add(f"{run_id}: run_config.json", bool(recorded))
     add("run_config is protocol v4", recorded.get("protocol") == PROTOCOL, str(recorded.get("protocol")))
-    add("memory store exists", Path(paths.memory_store(run_id)).exists())
 
-    # Retrieval embeds the alert only, so every memory arm over these
-    # alerts retrieves the same past alerts as the v3 reference.
-    expected = protocol_run._load_expected_retrieval()
-    seqs = [protocol_run._precedent_seqs(by_seq[s]) for s in sorted(by_seq)]
-    differ = sum(1 for got, want in zip(seqs, expected) if got != want)
-    add("retrieval matches the v3 reference", differ == 0,
-        f"{differ} of {len(seqs)} alerts differ", warn=True)
+    store = Path(paths.memory_store(run_id))
+
+    if condition == "off":
+        add("Arm A retrieved nothing", all(r["precedent_count"] == 0 for r in by_seq.values()))
+        add("Arm A created no memory store", not store.exists())
+    else:
+        add("memory store exists", store.exists())
+
+    if source == "p3":
+        # Retrieval embeds the alert only, so every memory arm over these
+        # alerts retrieves the same past alerts as the v3 reference.
+        expected = protocol_run._load_expected_retrieval()
+        seqs = [protocol_run._precedent_seqs(by_seq[s]) for s in sorted(by_seq)]
+        differ = sum(1 for got, want in zip(seqs, expected) if got != want)
+        add("retrieval matches the v3 reference", differ == 0,
+            f"{differ} of {len(seqs)} alerts differ", warn=True)
+
+    if seed and store.exists():
+        from memsoc.memory import open_memory
+        count = open_memory(run_id, condition).collection.count()
+        add("store holds the seeded cases plus one per verdict",
+            count == SEED_STORES[seed][0] + len(by_seq), f"{count} cases")
 
     if condition == "shuffled":
         _verify_shuffles(add, log, run_id, by_seq)
@@ -392,11 +526,25 @@ def verify(log, experiment, dry_run=False):
     log("")
     log("Scores (memsoc.triage.score_verdicts, unchanged):")
 
-    out = subprocess.run(
-        [sys.executable, "-m", "memsoc.triage.score_verdicts", "--verdicts", str(verdicts_path)],
-        capture_output=True, text=True, cwd=paths.ROOT,
-    )
-    log(out.stdout.strip() or out.stderr.strip())
+    if source == "p3":
+        out = subprocess.run(
+            [sys.executable, "-m", "memsoc.triage.score_verdicts", "--verdicts", str(verdicts_path)],
+            capture_output=True, text=True, cwd=paths.ROOT,
+        )
+        log(out.stdout.strip() or out.stderr.strip())
+
+    else:
+        # The benign flows are not in ground_truth.csv; they carry their
+        # own. Same scoring functions, other truth file.
+        from memsoc.triage import protocol_v4_benign
+
+        verdicts = score_verdicts.read_verdicts(verdicts_path)
+        truth = score_verdicts.read_ground_truth(protocol_v4_benign.set_paths(source)["ground_truth"])
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            score_verdicts.report(score_verdicts.score(verdicts, truth), verdicts[0]["arm"], False,
+                                  score_verdicts.prompt_variants(verdicts)[0])
+        log(buffer.getvalue().strip())
 
     return ok
 
@@ -429,7 +577,7 @@ def main():
         f"{' | DRY RUN' if args.dry_run else ''} ===")
 
     if args.preflight:
-        results, _ = _checks(with_api=True, dry_run=args.dry_run)
+        results, _ = _checks(with_api=True, dry_run=args.dry_run, experiment=args.experiment)
         sys.exit(0 if protocol_run._print_checks(log, results) else 1)
 
     if args.status:

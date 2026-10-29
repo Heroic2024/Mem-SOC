@@ -555,17 +555,21 @@ class ProtocolV4Tests(unittest.TestCase):
 
         test = self
 
+        test.seeded = 0
+
         class Recorder:
             skipped_writes = 0
 
             def __init__(self, run_id, condition):
                 self.condition = condition
+                self.writes = 0
+                self.collection = mock.Mock(count=lambda: test.seeded + self.writes)
 
             def retrieve(self, record, flow):
                 return []
 
             def write(self, *args, **kwargs):
-                pass
+                self.writes += 1
 
         def fake_triage(record, flow, seq, mem, run_id=""):
             test.calls.append((seq, mem.condition, run_id))
@@ -608,8 +612,8 @@ class ProtocolV4Tests(unittest.TestCase):
             return_value=([(n, "FAIL" if n in failing else "PASS", "") for n in names], self.loaded),
         )
 
-    def _git(self, tagged=True, note=True):
-        """HEAD is or is not the v4 tag; the note is or is not committed."""
+    def _git(self, tagged=True, note=True, listed=True):
+        """HEAD is or is not the v4 tag; the note and the benign list are or are not committed."""
 
         def fake(*args):
             if args[0] == "rev-parse":
@@ -617,7 +621,9 @@ class ProtocolV4Tests(unittest.TestCase):
             if args[0] == "rev-list":
                 return "abc" if tagged else None
             if args[0] == "ls-files":
-                return self.v4.PREREGISTRATION if note else None
+                if args[-1] == self.v4.PREREGISTRATION:
+                    return args[-1] if note else None
+                return args[-1] if listed else None
             if args[0] == "status":
                 return ""
             if args[0] == "log":
@@ -707,6 +713,99 @@ class ProtocolV4Tests(unittest.TestCase):
 
         self.assertEqual([seq for seq, _, _ in self.calls], [1, 2])
         self.assertEqual(len(self._verdicts("bshuf-gemma4-26b-p4")), 3)
+
+    def _benign(self, ok=True):
+        """A three-flow benign set, its files matching (or not) the committed list."""
+
+        from memsoc.triage import protocol_v4_benign
+
+        records = [dict(FIXTURE_RECORD, uid=f"b{i}", v4_benign={"set": "hard"}) for i in range(3)]
+        flows = {r["uid"]: FIXTURE_FLOW for r in records}
+
+        return (
+            mock.patch.object(protocol_v4_benign, "load", return_value=(records, flows)),
+            mock.patch.object(protocol_v4_benign, "check", return_value=(ok, "test")),
+        )
+
+    def _seed_source(self, content=b"p3 store"):
+        """A stand-in p3 B-self store, and SEED_STORES pinned to its hash."""
+
+        root = Path(self.tmp.name) / "shared"
+        store = root / "memory" / "bself-gemma4-26b-p3"
+        store.mkdir(parents=True)
+        (store / "chroma.sqlite3").write_bytes(b"p3 store")
+        self.seeded = 165
+
+        return (
+            mock.patch("memsoc.paths.P3_GEMMA_RESULTS", str(root)),
+            mock.patch.dict(self.v4.SEED_STORES,
+                            {"bself-gemma4-26b-p3": (165, hashlib.sha256(content).hexdigest())}),
+        )
+
+    def test_benign_arm_numbers_on_from_the_attacks_and_keeps_the_real_score(self):
+
+        load, check = self._benign()
+
+        with self._checks(), self._git(), load, check:
+            self.v4.run(self.log, "benign-armA", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [(s, "off", "armA-benign-gemma4-26b-p4") for s in (165, 166, 167)])
+        rows = self._verdicts("armA-benign-gemma4-26b-p4")
+        self.assertEqual([r["v4_benign"] for r in rows], [{"set": "hard"}] * 3)
+
+    def test_no_benign_run_without_the_committed_list_or_matching_files(self):
+
+        for listed, files_ok in ((False, True), (True, False)):
+
+            with self.subTest(listed=listed, files_ok=files_ok):
+                load, check = self._benign(ok=files_ok)
+
+                with self._checks(), self._git(listed=listed), load, check:
+                    with self.assertRaises(SystemExit):
+                        self.v4.run(self.log, "benign-armA", wait_on_quota=False)
+
+                self.assertEqual(self.calls, [])
+
+    def test_seeded_arm_copies_the_verified_store_and_checks_its_size(self):
+
+        load, check = self._benign()
+        source, pinned = self._seed_source()
+
+        with self._checks(), self._git(), load, check, source, pinned:
+            self.v4.run(self.log, "benign-bself", wait_on_quota=False)
+
+        copy = Path(self.tmp.name) / "memory" / "bself-benign-gemma4-26b-p4" / "chroma.sqlite3"
+        self.assertEqual(copy.read_bytes(), b"p3 store")
+        self.assertEqual([seq for seq, _, _ in self.calls], [165, 166, 167])
+
+        config = json.loads((Path(self.tmp.name) / "runs" / "bself-benign-gemma4-26b-p4"
+                             / "run_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["seed_store"], "bself-gemma4-26b-p3")
+
+    def test_seeded_arm_refuses_a_store_that_is_not_the_verified_one(self):
+
+        load, check = self._benign()
+        source, pinned = self._seed_source(content=b"some other store")
+
+        with self._checks(), self._git(), load, check, source, pinned:
+            with self.assertRaises(SystemExit) as stopped:
+                self.v4.run(self.log, "benign-bself", wait_on_quota=False)
+
+        self.assertEqual(stopped.exception.code, 1)
+        self.assertEqual(self.calls, [])
+        self.assertFalse((Path(self.tmp.name) / "memory" / "bself-benign-gemma4-26b-p4").exists())
+
+    def test_seeded_arm_refuses_a_store_of_the_wrong_size(self):
+
+        load, check = self._benign()
+        source, pinned = self._seed_source()
+
+        with self._checks(), self._git(), load, check, source, pinned:
+            self.seeded = 164
+            with self.assertRaises(SystemExit):
+                self.v4.run(self.log, "benign-bself", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [])
 
 
 class ApiErrorRetryTests(unittest.TestCase):
