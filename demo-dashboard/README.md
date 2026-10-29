@@ -184,9 +184,14 @@ demo-dashboard/
 │   ├── live_demo.py          the live pipeline: retrieve -> inject -> call -> parse
 │   ├── static_export.py      builds static_data/*.json from score_verdicts.py
 │   ├── demo_alerts.py         the curated alert shortlist (4 per model)
-│   ├── demo_artifacts/        isolated copies of the real ChromaDB memory stores
-│   │                          (read-only in spirit; never written to by this app)
-│   └── static_data/           generated JSON bundles (git-ignorable, rebuildable)
+│   ├── demo_artifacts/        isolated copies of the real ChromaDB memory stores,
+│   │                          separate from artifacts/memory/ so nothing here can
+│   │                          touch the archived evaluation results. Not fully
+│   │                          read-only, though: MemoryLayer.retrieve() logs each
+│   │                          real retrieval to retrievals.jsonl here, same as the
+│   │                          original evaluation runs did -- untracked by git
+│   │                          (gitignored), so normal use doesn't create diffs.
+│   └── static_data/           generated JSON bundles (gitignored, rebuildable)
 └── frontend/
     ├── public/diagrams/        the four-layer pipeline and three-arms diagram images
     ├── src/
