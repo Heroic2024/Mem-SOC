@@ -15,12 +15,19 @@ The three conditions (decisions.md A3, work-split.md)
 - "oracle" -- Arm B-oracle, a declared ceiling, never the headline.
               Identical to "self" except that write() replaces the
               verdict fields with the dataset's true label.
+- "shuffled" -- protocol v4, supplementary. Writes exactly as "oracle".
+              On read, each retrieved case's label is replaced with a
+              true label sampled from every case stored so far, seeded
+              by the querying alert's uid. The same cases come back;
+              only their label content is destroyed. Every replacement
+              is logged to shuffles.jsonl.
 
-"self" and "oracle" are the same class. The only divergence is
-_verdict_fields(), and it changes metadata only: the embedding text is
-rendered by the same case_text.render() in every condition, so the
-oracle cannot change which cases come back -- only what they say.
-Ground truth is read nowhere else in the memory layer.
+"self", "oracle" and "shuffled" are the same class. _verdict_fields()
+changes metadata only: the embedding text is rendered by the same
+case_text.render() in every condition, so no condition can change which
+cases come back -- only what they say. _shuffle_labels() runs after the
+cases are chosen, for the same reason. Ground truth is read nowhere
+else in the memory layer.
 
 Retrieval follows decisions.md C8: top 3, no similarity cut-off.
 Writes follow C5: every case is written (write_all).
@@ -31,11 +38,14 @@ What lands in the run directory, paths.memory_store(run_id)
 - cases.jsonl                   sidecar: one full row per write attempt
 - writes.jsonl                  one outcome row per write attempt
 - retrievals.jsonl              every candidate with distance and similarity
+- shuffles.jsonl                "shuffled" only: every label replacement
 """
 
 import csv
+import hashlib
 import json
 import os
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -44,7 +54,7 @@ from memsoc import paths
 from memsoc.memory import case_text
 
 
-CONDITIONS = ("off", "self", "oracle")
+CONDITIONS = ("off", "self", "oracle", "shuffled")
 
 TOP_K = 3
 
@@ -114,7 +124,7 @@ class NullMemoryLayer:
 
 
 class MemoryLayer:
-    """Arm B. Shared by "self" and "oracle"; see the module docstring."""
+    """Arm B. Shared by "self", "oracle" and "shuffled"; see the module docstring."""
 
     def __init__(self, run_id: str, condition: str):
 
@@ -217,6 +227,9 @@ class MemoryLayer:
 
             cases.sort(key=lambda case: case.distance)
 
+        if self.condition == "shuffled":
+            cases = self._shuffle_labels(record, cases)
+
         finished = time.perf_counter()
 
         self._append("retrievals.jsonl", {
@@ -236,6 +249,64 @@ class MemoryLayer:
         })
 
         return cases
+
+    def _shuffle_labels(self, record, cases) -> list:
+        """
+        "shuffled" only. Replace each retrieved case's label with a true
+        label drawn, with replacement, from every case stored so far.
+
+        Drawing from the stored labels keeps the class mix of what the
+        LLM sees the same as the store's own. The pool is ordered by seq
+        and the generator is seeded from the querying alert's uid, so the
+        same alert against the same store always gets the same labels --
+        a resumed run reproduces them exactly. Only verdict and
+        attack_category change; confidence and rationale are the
+        oracle's constant 1.0 and "" in every case already.
+        """
+
+        if not cases:
+            return cases
+
+        stored = self.collection.get(include=["metadatas"])["metadatas"]
+        pool = [
+            (m["verdict"], m["attack_category"])
+            for m in sorted(stored, key=lambda m: int(m["seq"]))
+        ]
+
+        seed = shuffle_seed(record["uid"])
+        rng = random.Random(seed)
+
+        shuffled = []
+        replacements = []
+
+        for case in cases:
+
+            verdict, attack_category = rng.choice(pool)
+
+            replacements.append({
+                "case_id": case.case_id,
+                "from_verdict": case.metadata.get("verdict"),
+                "from_attack_category": case.metadata.get("attack_category"),
+                "to_verdict": verdict,
+                "to_attack_category": attack_category,
+            })
+
+            shuffled.append(Case(
+                case_id=case.case_id,
+                similarity=case.similarity,
+                distance=case.distance,
+                document=case.document,
+                metadata=dict(case.metadata, verdict=verdict, attack_category=attack_category),
+            ))
+
+        self._append("shuffles.jsonl", {
+            "uid": record.get("uid"),
+            "seed": seed,
+            "pool_size": len(pool),
+            "replacements": replacements,
+        })
+
+        return shuffled
 
     # -----------------------------------------------------------------
     # Write path
@@ -350,7 +421,8 @@ class MemoryLayer:
         "self" stores the LLM's verdict. "oracle" stores the true label
         in its place and no rationale: the LLM's rationale argues for the
         LLM's verdict, and pairing it with a different label would be the
-        "mix" condition decisions.md A3 dropped.
+        "mix" condition decisions.md A3 dropped. "shuffled" stores what
+        "oracle" stores; its labels are replaced on read, never on disk.
         """
 
         if self.condition == "self":
@@ -437,6 +509,12 @@ class MemoryLayer:
 
         with open(os.path.join(self.store_dir, filename), "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
+
+
+def shuffle_seed(uid: str) -> int:
+    """The "shuffled" condition's per-alert seed: the first 64 bits of SHA-256(uid)."""
+
+    return int(hashlib.sha256(uid.encode("utf-8")).hexdigest()[:16], 16)
 
 
 def _check_metadata(metadata: dict) -> None:
