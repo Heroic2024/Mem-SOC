@@ -111,6 +111,39 @@ def copy_rate_stats(armA, bself, boracle, gt):
     }
 
 
+def mean_latency(verdicts):
+    vals = [r["latency_ms"] for r in verdicts if r.get("latency_ms") is not None]
+    return round(sum(vals) / len(vals), 1) if vals else None
+
+
+def family_breakdown(verdicts):
+    """Counts, by attack family, of alerts this arm correctly escalated
+    (verdict true_positive). Used for the donut chart."""
+    counts = Counter(
+        r["attack_category"] for r in verdicts
+        if r["verdict"] == "true_positive"
+    )
+    return dict(counts.most_common())
+
+
+def confidence_histogram(verdicts, bucket_edges=(0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.01)):
+    """Histogram of confidence values among correct catches (verdict ==
+    true_positive), bucketed for the confidence chart."""
+    labels = ["0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-0.95", "0.95-1.0"]
+    counts = [0] * len(labels)
+    for r in verdicts:
+        if r["verdict"] != "true_positive":
+            continue
+        c = r.get("confidence")
+        if c is None:
+            continue
+        for i in range(len(bucket_edges) - 1):
+            if bucket_edges[i] <= c < bucket_edges[i + 1]:
+                counts[i] += 1
+                break
+    return {"labels": labels, "counts": counts}
+
+
 def per_model_bundle(key, cfg):
     arms = {name: load_arm(run_id) for name, run_id in cfg["arms"].items()}
     gt_simple = {uid: row["attack"] for uid, row in GT.items()}
@@ -130,7 +163,12 @@ def per_model_bundle(key, cfg):
             "cat_accuracy_wilson": sv.wilson_interval(
                 round(s["cat_accuracy"] * s["n"]), s["n"]
             ),
+            "mean_latency_ms": mean_latency(verdicts),
         }
+
+    if "bself" in arms:
+        bundle["family_breakdown"] = family_breakdown(arms["bself"])
+        bundle["confidence_histogram"] = confidence_histogram(arms["bself"])
 
     if "A" in arms and "bself" in arms:
         mcnemar_recall = sv.paired_mcnemar(arms["A"], arms["bself"], GT, field="verdict")
@@ -166,6 +204,77 @@ def per_model_bundle(key, cfg):
     return bundle
 
 
+def true_positive_showcase():
+    """
+    Real alerts where BOTH models' self-memory arm correctly escalated a
+    genuine attack (verdict == true_positive). Filtered, not curated --
+    every entry is a real row from the scored verdict files, joined on
+    uid. Capped at 40 for payload size; the frontend can request more
+    detail per-alert on demand if needed.
+    """
+    gemma = {r["uid"]: r for r in load_arm(MODELS["gemma"]["arms"]["bself"])}
+    gptoss = {r["uid"]: r for r in load_arm(MODELS["gptoss"]["arms"]["bself"])}
+
+    common_uids = set(gemma) & set(gptoss)
+    out = []
+    for uid in common_uids:
+        g, p = gemma[uid], gptoss[uid]
+        if g["verdict"] == "true_positive" and p["verdict"] == "true_positive":
+            true_family = GT.get(uid, {}).get("attack")
+            out.append({
+                "uid": uid,
+                "seq_gemma": g["seq"],
+                "family_gemma": g["attack_category"],
+                "family_gemma_correct": g["attack_category"] == true_family,
+                "confidence_gemma": g["confidence"],
+                "rationale_gemma": g["rationale_summary"],
+                "family_gptoss": p["attack_category"],
+                "family_gptoss_correct": p["attack_category"] == true_family,
+                "confidence_gptoss": p["confidence"],
+                "rationale_gptoss": p["rationale_summary"],
+                "families_agree": g["attack_category"] == p["attack_category"],
+                "true_family": true_family,
+            })
+
+    # Both-correct examples first -- genuinely the strongest cases to lead
+    # with, without hiding that not every catch also names the family
+    # right (shown honestly per-card via family_*_correct).
+    out.sort(key=lambda r: (not (r["family_gemma_correct"] and r["family_gptoss_correct"]), r["seq_gemma"]))
+    both_family_correct_count = sum(
+        1 for r in out if r["family_gemma_correct"] and r["family_gptoss_correct"]
+    )
+
+    gemma_only_count = sum(1 for r in gemma.values() if r["verdict"] == "true_positive")
+    gptoss_only_count = sum(1 for r in gptoss.values() if r["verdict"] == "true_positive")
+
+    return {
+        "both_models_count": len(out),
+        "both_family_correct_count": both_family_correct_count,
+        "gemma_count": gemma_only_count,
+        "gptoss_count": gptoss_only_count,
+        "examples": out[:40],
+    }
+
+
+# Qwen 3.8 27B has no raw per-verdict log in this repo (Section 4.6.2 of
+# the report), so it can't be scored here the way Gemma and gpt-oss-20b
+# are -- these are the already-published numbers from
+# docs/status/qwen-results.md, included for the cross-model comparison
+# only. Static-section only; Qwen is excluded from the Dynamic section
+# and the true-positive showcase for the same reason.
+QWEN_SUMMARY = {
+    "label": "Qwen 3.8 27B",
+    "source": "docs/status/qwen-results.md",
+    "n_alerts": 250,
+    "arms": {
+        "A": {"recall": 0.020, "cat_accuracy": 0.020, "tp": 5, "fn": 245},
+        "bself": {"recall": 0.000, "cat_accuracy": 0.000, "tp": 0, "fn": 250},
+    },
+    "mcnemar_p": 0.0625,
+    "note": "Baseline recall is at the floor (2%); this result is about Qwen with this prompt, not about memory in general (docs/status/qwen-results.md).",
+}
+
+
 def main():
     cross_model = {"models": {}}
     for key, cfg in MODELS.items():
@@ -178,9 +287,14 @@ def main():
         }
         print(f"wrote model_{key}.json")
 
+    cross_model["models"]["qwen"] = QWEN_SUMMARY
     with open(os.path.join(OUT_DIR, "cross_model.json"), "w", encoding="utf-8") as f:
         json.dump(cross_model, f, indent=2)
     print("wrote cross_model.json")
+
+    with open(os.path.join(OUT_DIR, "true_positive_showcase.json"), "w", encoding="utf-8") as f:
+        json.dump(true_positive_showcase(), f, indent=2)
+    print("wrote true_positive_showcase.json")
 
 
 if __name__ == "__main__":
