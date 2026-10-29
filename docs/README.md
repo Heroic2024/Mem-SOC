@@ -40,7 +40,7 @@ package under `src/memsoc/` and one directory here.
 | I want to… | Read |
 |---|---|
 | **Know what still needs deciding, and what was already decided** | [`decisions.md`](./decisions.md) |
-| **Know what I am supposed to be building** | [`work-split.md`](./work-split.md) |
+| **Know what I am supposed to be building** | [`work-split.md`](./work-split/work-split.md) |
 | **Set up, or pull after the restructure** | [`deployment/operations.md`](./deployment/operations.md) **§2 — Before You Test** |
 | Run the stack | [`deployment/operations.md`](./deployment/operations.md) |
 | Browse every API endpoint in one place | `http://localhost:8080/api-docs` — see [`deployment/architecture.md`](./deployment/architecture.md) |
@@ -66,7 +66,9 @@ package under `src/memsoc/` and one directory here.
 docs/
 ├── README.md                  this file
 ├── decisions.md               open questions, settled decisions, and what was run
-├── work-split.md              who owns what, and the interfaces between us
+├── work-split/                who owns what, and the interfaces between us
+│   ├── work-split.md          ownership by layer and the one memory interface
+│   └── protocol-v4-work-split.md   protocol v4 supplementary experiments, split three ways
 ├── PRODUCT_BACKLOG.md         central register of open work
 ├── architecture/              system-wide views
 │   ├── end-to-end-pipeline.md
