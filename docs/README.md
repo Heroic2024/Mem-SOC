@@ -68,7 +68,8 @@ docs/
 ├── decisions.md               open questions, settled decisions, and what was run
 ├── work-split/                who owns what, and the interfaces between us
 │   ├── work-split.md          ownership by layer and the one memory interface
-│   └── protocol-v4-work-split.md   protocol v4 supplementary experiments, split three ways
+│   ├── protocol-v4-work-split.md   protocol v4 supplementary experiments, split three ways
+│   └── protocol-v4-execution-plan.md   protocol v4: what is done, what remains, in order
 ├── PRODUCT_BACKLOG.md         central register of open work
 ├── architecture/              system-wide views
 │   ├── end-to-end-pipeline.md
