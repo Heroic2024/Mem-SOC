@@ -40,7 +40,7 @@ package under `src/memsoc/` and one directory here.
 | I want to… | Read |
 |---|---|
 | **Know what still needs deciding, and what was already decided** | [`decisions.md`](./decisions.md) |
-| **Know what I am supposed to be building** | [`work-split.md`](./work-split.md) |
+| **Know what I am supposed to be building** | [`work-split.md`](./work-split/work-split.md) |
 | **Set up, or pull after the restructure** | [`deployment/operations.md`](./deployment/operations.md) **§2 — Before You Test** |
 | Run the stack | [`deployment/operations.md`](./deployment/operations.md) |
 | Browse every API endpoint in one place | `http://localhost:8080/api-docs` — see [`deployment/architecture.md`](./deployment/architecture.md) |
@@ -56,6 +56,7 @@ package under `src/memsoc/` and one directory here.
 | See the Groq gpt-oss-20b three-arm result on protocol v1 and figures | [`status/groq-gptoss20b-p1-results.md`](./status/groq-gptoss20b-p1-results.md) |
 | **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v3.md`](./status/testing-protocol-v3.md) |
 | **Run the live demo for the final presentation** | [`status/final-demo-runbook.md`](./status/final-demo-runbook.md) |
+| See the new experiments the 2026-10-28 paper review asks for, and the order to run them | [`status/paper-review-experiments.md`](./status/paper-review-experiments.md) |
 
 ---
 
@@ -65,7 +66,9 @@ package under `src/memsoc/` and one directory here.
 docs/
 ├── README.md                  this file
 ├── decisions.md               open questions, settled decisions, and what was run
-├── work-split.md              who owns what, and the interfaces between us
+├── work-split/                who owns what, and the interfaces between us
+│   ├── work-split.md          ownership by layer and the one memory interface
+│   └── protocol-v4-work-split.md   protocol v4 supplementary experiments, split three ways
 ├── PRODUCT_BACKLOG.md         central register of open work
 ├── architecture/              system-wide views
 │   ├── end-to-end-pipeline.md
@@ -100,7 +103,8 @@ docs/
 │   ├── gemma-p3-results.md
 │   ├── qwen-results.md
 │   ├── groq-gptoss20b-p1-results.md
-│   └── final-demo-runbook.md
+│   ├── final-demo-runbook.md
+│   └── paper-review-experiments.md
 └── archive/                   superseded, banner-marked, do not follow
 ```
 

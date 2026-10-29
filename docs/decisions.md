@@ -180,7 +180,7 @@ build: one stores LLM verdicts, one stores a mix, one stores the true labels.
 **Rejected — and note this question was already answered above**, in the
 sentence "the two conditions are one switch on the memory module, not two
 separate sets of code," and in the line ruling out true-labels-only. The full
-reasoning is in [`work-split.md`](./work-split.md); the short version is that
+reasoning is in [`work-split.md`](./work-split/work-split.md); the short version is that
 three separately-written memory layers give three codepaths, and then a
 difference in results could come from a difference in implementation rather
 than from the memory. That is the one thing that would make the whole
@@ -210,7 +210,7 @@ lands early.
 
 Running a condition is a **config change**, made by whoever has API budget
 when the module lands. It is not a build task and it is not owned by anyone.
-Work is divided by layer instead — see [`work-split.md`](./work-split.md).
+Work is divided by layer instead — see [`work-split.md`](./work-split/work-split.md).
 
 **Status:** answered. Build work is BL-015 (the switch) and BL-002 (the module).
 
