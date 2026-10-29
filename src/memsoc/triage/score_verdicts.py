@@ -495,6 +495,80 @@ def paired_bootstrap_ci(verdicts_a, verdicts_b, ground_truth, metric="recall",
     return {"point": point, "ci_lo": lo, "ci_hi": hi, "n_boot": n_boot}
 
 
+def cluster_bootstrap_ci(verdicts_a, verdicts_b, ground_truth, metric="recall",
+                          n_boot=2000, seed=20261023):
+    """
+    95% CI on the paired difference (arm B's metric minus arm A's), via a
+    CLUSTER bootstrap that resamples whole near-duplicate groups --
+    (detector_label, dst_port, protocol), the same key score() uses for
+    its own consistency check -- instead of individual alerts.
+
+    paired_bootstrap_ci() treats every alert as an independent draw. In a
+    memory arm that assumption is shaky: alerts inside the same
+    near-duplicate group stop being independent once memory starts
+    repeating a stored label across them, so the group, not the alert,
+    is closer to the true unit of evidence. This resamples groups with
+    replacement (singleton groups behave like an ordinary alert; a
+    multi-alert group is kept or dropped as a block), which is the
+    standard fix for clustered data and is expected to widen the CI and
+    produce a less extreme implied p-value than the per-alert version
+    -- exactly the correction a reviewer would ask for before trusting a
+    McNemar p-value computed as if every alert were independent.
+    """
+
+    rng = random.Random(seed)
+    a_by_uid, b_by_uid = _by_uid(verdicts_a), _by_uid(verdicts_b)
+    uids = [u for u in a_by_uid if u in b_by_uid and u in ground_truth]
+
+    point = (
+        score(list(b_by_uid.values()), ground_truth)[metric]
+        - score(list(a_by_uid.values()), ground_truth)[metric]
+    )
+
+    if not uids:
+        return {"point": point, "ci_lo": point, "ci_hi": point,
+                "n_boot": 0, "n_groups": 0, "p_empirical": None}
+
+    groups = defaultdict(list)
+    for u in uids:
+        row = a_by_uid[u]
+        key = (row["detector_label"], row["dst_port"], row["protocol"])
+        groups[key].append(u)
+    group_keys = list(groups.keys())
+
+    diffs = []
+
+    for _ in range(n_boot):
+
+        sampled_groups = rng.choices(group_keys, k=len(group_keys))
+        sample = [u for key in sampled_groups for u in groups[key]]
+        gt_sub = {u: ground_truth[u] for u in set(sample)}
+
+        sa = score([a_by_uid[u] for u in sample], gt_sub)[metric]
+        sb = score([b_by_uid[u] for u in sample], gt_sub)[metric]
+
+        diffs.append(sb - sa)
+
+    diffs.sort()
+    lo = diffs[int(0.025 * n_boot)]
+    hi = diffs[min(n_boot - 1, int(0.975 * n_boot))]
+
+    # Two-sided empirical p-value: the share of resamples whose
+    # difference lands on the opposite side of zero from the point
+    # estimate, doubled. This is a test of sign, not of magnitude, and
+    # is comparable in spirit to the per-alert McNemar p-value it is
+    # meant to check.
+    if point >= 0:
+        p_empirical = 2 * min(sum(1 for d in diffs if d <= 0) / n_boot, 0.5)
+    else:
+        p_empirical = 2 * min(sum(1 for d in diffs if d >= 0) / n_boot, 0.5)
+
+    return {
+        "point": point, "ci_lo": lo, "ci_hi": hi, "n_boot": n_boot,
+        "n_groups": len(group_keys), "p_empirical": p_empirical,
+    }
+
+
 def cost_summary(verdicts):
     """
     Token usage per verdict, from the usage_* fields protocol_run.py

@@ -259,6 +259,80 @@ class PairedBootstrapCiTests(unittest.TestCase):
         self.assertAlmostEqual(result["point"], expected)
 
 
+class ClusterBootstrapCiTests(unittest.TestCase):
+
+    def test_identical_arms_collapse_the_ci_around_zero(self):
+        gt = {f"u{i}": gt_row(f"u{i}", "Fuzzers") for i in range(20)}
+        verdicts = [
+            verdict_row(f"u{i}", "true_positive" if i % 2 else "false_positive",
+                        "Fuzzers", dst_port=80 + (i % 5), seq=i)
+            for i in range(20)
+        ]
+        result = sv.cluster_bootstrap_ci(verdicts, verdicts, gt, metric="recall", n_boot=200)
+        self.assertAlmostEqual(result["point"], 0.0)
+        self.assertAlmostEqual(result["ci_lo"], 0.0, places=2)
+        self.assertAlmostEqual(result["ci_hi"], 0.0, places=2)
+
+    def test_point_estimate_matches_direct_computation(self):
+        gt = {
+            "u1": gt_row("u1", "Fuzzers"), "u2": gt_row("u2", "Fuzzers"),
+        }
+        arm_a = [verdict_row("u1", "false_positive", "none", dst_port=80),
+                 verdict_row("u2", "false_positive", "none", dst_port=81)]
+        arm_b = [verdict_row("u1", "true_positive", "Fuzzers", dst_port=80),
+                 verdict_row("u2", "false_positive", "none", dst_port=81)]
+        result = sv.cluster_bootstrap_ci(arm_a, arm_b, gt, metric="recall", n_boot=50)
+        expected = sv.score(arm_b, gt)["recall"] - sv.score(arm_a, gt)["recall"]
+        self.assertAlmostEqual(result["point"], expected)
+
+    def test_groups_by_detector_label_port_and_protocol(self):
+        # Two alerts share a (detector_label, dst_port, protocol) key, so
+        # they form one near-duplicate group; the third is a singleton.
+        # n_groups should therefore be 2, not 3.
+        gt = {f"u{i}": gt_row(f"u{i}", "Fuzzers") for i in range(3)}
+        verdicts = [
+            verdict_row("u0", "true_positive", "Fuzzers", detector_label="Fuzzers", dst_port=80, protocol=6),
+            verdict_row("u1", "true_positive", "Fuzzers", detector_label="Fuzzers", dst_port=80, protocol=6),
+            verdict_row("u2", "true_positive", "Fuzzers", detector_label="DoS", dst_port=53, protocol=17),
+        ]
+        result = sv.cluster_bootstrap_ci(verdicts, verdicts, gt, metric="recall", n_boot=20)
+        self.assertEqual(result["n_groups"], 2)
+
+    def test_clustering_widens_the_ci_when_a_group_drives_the_effect(self):
+        # Build a case where the B-self "improvement" over Arm A is
+        # concentrated entirely inside one large near-duplicate group.
+        # A cluster bootstrap can drop that whole group in one resample;
+        # a per-alert bootstrap never can. The cluster CI should
+        # therefore be at least as wide as the per-alert one.
+        gt = {}
+        arm_a, arm_b = [], []
+        # One big group of 12 alerts: Arm A misses all of them, B-self
+        # catches all of them -- this is where the effect lives.
+        for i in range(12):
+            uid = f"group{i}"
+            gt[uid] = gt_row(uid, "Fuzzers")
+            arm_a.append(verdict_row(uid, "false_positive", "none",
+                                      detector_label="Fuzzers", dst_port=80, protocol=6, seq=i))
+            arm_b.append(verdict_row(uid, "true_positive", "Fuzzers",
+                                      detector_label="Fuzzers", dst_port=80, protocol=6, seq=i))
+        # 12 singleton alerts where both arms agree -- pure noise alerts
+        # that add no signal either way.
+        for i in range(12):
+            uid = f"single{i}"
+            gt[uid] = gt_row(uid, "Fuzzers")
+            arm_a.append(verdict_row(uid, "true_positive", "Fuzzers",
+                                      detector_label="DoS", dst_port=100 + i, protocol=6, seq=12 + i))
+            arm_b.append(verdict_row(uid, "true_positive", "Fuzzers",
+                                      detector_label="DoS", dst_port=100 + i, protocol=6, seq=12 + i))
+
+        per_alert = sv.paired_bootstrap_ci(arm_a, arm_b, gt, metric="recall", n_boot=1000)
+        clustered = sv.cluster_bootstrap_ci(arm_a, arm_b, gt, metric="recall", n_boot=1000)
+
+        per_alert_width = per_alert["ci_hi"] - per_alert["ci_lo"]
+        clustered_width = clustered["ci_hi"] - clustered["ci_lo"]
+        self.assertGreaterEqual(clustered_width, per_alert_width)
+
+
 class CostSummaryTests(unittest.TestCase):
 
     def test_means_and_sums_from_usage_fields(self):
