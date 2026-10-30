@@ -372,5 +372,43 @@ class ExistingScoreUnaffectedTests(unittest.TestCase):
             self.assertIn(key, result)
 
 
+class KnnVoteTests(unittest.TestCase):
+    """
+    The protocol v4 nearest-neighbour baseline's vote (BL-178). Labels
+    arrive nearest first, as the run retrieved them.
+    """
+
+    def setUp(self):
+
+        from memsoc.triage import knn_baseline
+
+        self.vote = knn_baseline.vote
+        self.as_rows = knn_baseline._as_rows
+
+    def test_majority_wins_regardless_of_position(self):
+
+        self.assertEqual(self.vote(["DoS", "Exploits", "Exploits"]), "Exploits")
+
+    def test_a_tie_goes_to_the_nearest_of_the_tied(self):
+
+        self.assertEqual(self.vote(["Fuzzers", "DoS", "Exploits"]), "Fuzzers")
+        self.assertEqual(self.vote(["Fuzzers", "DoS"]), "Fuzzers")
+        self.assertEqual(self.vote(["DoS", "Fuzzers", "Fuzzers", "DoS"]), "DoS")
+
+    def test_one_neighbour_is_its_own_vote(self):
+
+        self.assertEqual(self.vote(["Generic"]), "Generic")
+
+    def test_no_neighbour_gives_no_prediction_and_scores_wrong(self):
+
+        self.assertIsNone(self.vote([]))
+
+        rows = self.as_rows(["u0", "u1"], {"u0": None, "u1": "DoS"})
+
+        # An empty family never equals a true family, so it counts wrong.
+        self.assertEqual(rows, [{"uid": "u0", "attack_category": ""},
+                                {"uid": "u1", "attack_category": "DoS"}])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@ Layer 3 -- the memory layer. The single experimental variable.
 
     from memsoc.memory import open_memory
 
-    mem = open_memory(run_id, condition)        # "off" | "self" | "oracle" | "shuffled"
+    mem = open_memory(run_id, condition)        # "off" | "self" | "oracle" | "shuffled" | "nolabel"
     cases = mem.retrieve(record, flow)
     mem.write(record, flow, verdict, seq, precedent_used)
 

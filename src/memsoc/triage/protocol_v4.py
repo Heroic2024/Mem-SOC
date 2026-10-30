@@ -60,11 +60,14 @@ PROTOCOL_TAG = "memsoc-protocol-v4"
 MODEL = "gemma-4-26b"
 
 # One arm per experiment. "alerts" names the alerts it triages: "p3" is
-# the first 165 stream alerts; "hard" and "random" are the benign sets
+# the first 165 stream alerts, "p3-reversed" the same 165 in exactly the
+# reverse order; "hard" and "random" are the benign sets
 # built by protocol_v4_benign.py. "seed_store" is a p3 memory store the
 # run starts from, copied, never opened in place.
 EXPERIMENTS = {
     "shuffled": {"condition": "shuffled", "prefix": "bshuf", "alerts": "p3"},
+    "nolabel": {"condition": "nolabel", "prefix": "bnolabel", "alerts": "p3"},
+    "reversed": {"condition": "self", "prefix": "bself-rev", "alerts": "p3-reversed"},
     "benign-armA": {"condition": "off", "prefix": "armA-benign", "alerts": "hard"},
     "benign-bself": {"condition": "self", "prefix": "bself-benign", "alerts": "hard",
                      "seed_store": "bself-gemma4-26b-p3"},
@@ -72,6 +75,9 @@ EXPERIMENTS = {
     "random-bself": {"condition": "self", "prefix": "bself-randbenign", "alerts": "random",
                      "seed_store": "bself-gemma4-26b-p3"},
 }
+
+# Alert sources that are benign sets built by protocol_v4_benign.py.
+BENIGN_SETS = ("hard", "random")
 
 # The p3 B-self store as received and verified (BL-171): its case count
 # and the SHA-256 of its chroma.sqlite3. A seeded run refuses any other.
@@ -125,6 +131,8 @@ def _alerts(experiment, loaded, dry_run):
 
     if source == "p3":
         alerts, flows, start = loaded["first"], loaded["flows"], 0
+    elif source == "p3-reversed":
+        alerts, flows, start = loaded["first"][::-1], loaded["flows"], 0
     else:
         from memsoc.triage import protocol_v4_benign
         alerts, flows = protocol_v4_benign.load(source)
@@ -200,7 +208,7 @@ def _checks(with_api, dry_run, experiment=None):
 
     source = EXPERIMENTS[experiment]["alerts"] if experiment else "p3"
 
-    if source != "p3":
+    if source in BENIGN_SETS:
 
         from memsoc.triage import protocol_v4_benign
 
@@ -397,7 +405,7 @@ def _expected(experiment, dry_run):
 
     source = EXPERIMENTS[experiment]["alerts"]
 
-    if source == "p3":
+    if source not in BENIGN_SETS:
         total, start = protocol_run.PROTOCOL_ALERTS, 0
     else:
         from memsoc.triage import protocol_v4_benign
@@ -526,7 +534,7 @@ def verify(log, experiment, dry_run=False):
     log("")
     log("Scores (memsoc.triage.score_verdicts, unchanged):")
 
-    if source == "p3":
+    if source not in BENIGN_SETS:
         out = subprocess.run(
             [sys.executable, "-m", "memsoc.triage.score_verdicts", "--verdicts", str(verdicts_path)],
             capture_output=True, text=True, cwd=paths.ROOT,

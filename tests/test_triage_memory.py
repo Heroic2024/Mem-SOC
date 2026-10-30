@@ -172,6 +172,39 @@ class PrecedentSectionTests(unittest.TestCase):
 
         self.assertNotIn("SHOULD-NOT-RENDER", prompt)
 
+    def test_a_case_with_family_and_reasoning_renders_as_before_byte_for_byte(self):
+
+        # The block exactly as the p3 runs rendered it (BL-170 must not
+        # change any existing condition's prompt).
+        case = _case("r:000001", 0.9)
+
+        self.assertEqual(
+            triage_prompt._render_precedents([case]),
+            "Relevant past cases from this SOC's records:\n\n"
+            f"[Case r:000001 -- similarity 0.90]\n{case.document}\n"
+            "Verdict: true_positive (confidence 0.90)\n"
+            "Attack category: Exploits\n"
+            "Reasoning: Repeated HTTP probing.\n\n",
+        )
+
+        oracle = Case("r:000002", 0.8, 0.2, case.document,
+                      {"verdict": "true_positive", "attack_category": "DoS",
+                       "confidence": 1.0, "rationale_summary": ""})
+
+        self.assertIn("Attack category: DoS\nReasoning: (none recorded)",
+                      triage_prompt._render_precedents([oracle]))
+
+    def test_a_label_free_case_shows_no_family_and_no_reasoning(self):
+
+        case = Case("r:000003", 0.85, 0.15, "TCP to port 80 (http)",
+                    {"verdict": "true_positive", "confidence": 0.8, "label_source": "llm"})
+
+        block = triage_prompt._render_precedents([case])
+
+        self.assertIn("Verdict: true_positive (confidence 0.80)\n\n", block)
+        self.assertNotIn("Attack category", block)
+        self.assertNotIn("Reasoning", block)
+
 
 class GeminiClientTests(unittest.TestCase):
 
@@ -637,6 +670,30 @@ class ProtocolV4Tests(unittest.TestCase):
         path = Path(self.tmp.name) / "runs" / run_id / "triage_verdicts.jsonl"
 
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+    def test_reversed_runs_the_same_alerts_in_exactly_reverse_order(self):
+
+        with self._checks(), self._git():
+            self.v4.run(self.log, "reversed", wait_on_quota=False)
+
+        run_id = "bself-rev-gemma4-26b-p4"
+        rows = self._verdicts(run_id)
+
+        self.assertEqual([r["uid"] for r in rows], ["u2", "u1", "u0"])
+        self.assertEqual([seq for seq, _, _ in self.calls], [0, 1, 2])
+        self.assertEqual({c for _, c, _ in self.calls}, {"self"})
+
+        config = json.loads((Path(self.tmp.name) / "runs" / run_id / "run_config.json")
+                            .read_text(encoding="utf-8"))
+        self.assertEqual(config["alert_order_sha256"],
+                         self.v4._alert_order_sha256(self.loaded["first"][::-1]))
+
+    def test_nolabel_runs_the_p3_alerts_under_its_own_condition(self):
+
+        with self._checks(), self._git():
+            self.v4.run(self.log, "nolabel", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [(s, "nolabel", "bnolabel-gemma4-26b-p4") for s in range(3)])
 
     def test_v4_run_ids_never_collide_with_v3(self):
 

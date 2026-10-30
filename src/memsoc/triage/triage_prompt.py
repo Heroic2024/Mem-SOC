@@ -265,6 +265,13 @@ def _render_precedents(precedents) -> str:
 
     No precedents renders as the empty string, so the prompt is
     byte-identical to the Arm A prompt: silence, not a stated absence.
+
+    One approved edit, 2026-10-30 (BL-170, protocol v4 pre-registration
+    §8.2): the Attack category and Reasoning lines are printed only for
+    a case that stores those fields. The label-free condition stores
+    neither, so its cases show the alert, the verdict and the
+    confidence. Every other condition stores both, so its prompt is
+    unchanged byte for byte.
     """
 
     if not precedents:
@@ -275,15 +282,20 @@ def _render_precedents(precedents) -> str:
     for case in sorted(precedents, key=lambda c: -c.similarity):
 
         m = case.metadata
-        reasoning = m.get("rationale_summary") or "(none recorded)"
 
-        blocks.append(
-            f"[Case {case.case_id} -- similarity {case.similarity:.2f}]\n"
-            f"{case.document}\n"
-            f"Verdict: {m.get('verdict')} (confidence {float(m.get('confidence', 0.0)):.2f})\n"
-            f"Attack category: {m.get('attack_category')}\n"
-            f"Reasoning: {reasoning}"
-        )
+        lines = [
+            f"[Case {case.case_id} -- similarity {case.similarity:.2f}]",
+            case.document,
+            f"Verdict: {m.get('verdict')} (confidence {float(m.get('confidence', 0.0)):.2f})",
+        ]
+
+        if "attack_category" in m:
+            lines.append(f"Attack category: {m.get('attack_category')}")
+
+        if "rationale_summary" in m:
+            lines.append(f"Reasoning: {m.get('rationale_summary') or '(none recorded)'}")
+
+        blocks.append("\n".join(lines))
 
     return (
         "Relevant past cases from this SOC's records:\n\n"
