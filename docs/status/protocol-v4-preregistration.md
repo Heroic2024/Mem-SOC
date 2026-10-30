@@ -204,3 +204,13 @@ when given.
 | 5 | Multiple testing (§5, BL-177) | **Both are reported:** each raw p-value and its Holm-adjusted value across the five hypotheses (H1, H2a, H2b, H3, H4). "Significant" in §5 is read on the Holm-adjusted value; the raw p is shown beside it. |
 
 With this, every §7 item is settled. Nothing above §8 has been changed.
+
+### 8.3 (2026-10-30, Aadit): supervisor confirmation of §8.2 items 1–3
+
+The supervisor confirmed all three on 2026-10-30, before the `memsoc-protocol-v4` tag and before any v4 run:
+
+1. The benign alerts show an "Attack/benign score" of 1.0, with the real values logged (BL-181).
+2. The label-free condition's precedent block leaves out the Attack category and Reasoning lines (BL-170).
+3. The family-only shuffle is the intended test (BL-172).
+
+No decision changed. Every §7 item is settled and confirmed.
