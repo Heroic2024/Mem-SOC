@@ -6,6 +6,7 @@ import CrossModel from "./sections/CrossModel.jsx";
 import Mechanism from "./sections/Mechanism.jsx";
 import StatisticalRigor from "./sections/StatisticalRigor.jsx";
 import Architecture from "./sections/Architecture.jsx";
+import AlertJourney from "./sections/AlertJourney.jsx";
 import DynamicSection from "./sections/DynamicSection.jsx";
 
 const SECTIONS = [
@@ -16,6 +17,7 @@ const SECTIONS = [
   { id: "mechanism", n: "05", label: "The Mechanism", Comp: Mechanism },
   { id: "rigor", n: "06", label: "Statistical Rigor", Comp: StatisticalRigor },
   { id: "architecture", n: "07", label: "Architecture", Comp: Architecture },
+  { id: "journey", n: "08", label: "One Alert's Journey", Comp: AlertJourney },
 ];
 
 export default function App() {
@@ -37,11 +39,11 @@ export default function App() {
           ))}
           <div className="divider" />
           <button className={active === "dynamic" ? "on" : ""} onClick={() => setActive("dynamic")}>
-            <span className="n">08</span> Live Demo <span className="tag-live">live</span>
+            <span className="n">09</span> Live Demo <span className="tag-live">live</span>
           </button>
         </nav>
       </aside>
-      <main>{active === "dynamic" ? <DynamicSection /> : <ActiveComp />}</main>
+      <main>{active === "dynamic" ? <DynamicSection /> : <ActiveComp onNavigate={setActive} />}</main>
     </div>
   );
 }
