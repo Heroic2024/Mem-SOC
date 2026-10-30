@@ -569,7 +569,7 @@ Key features: L4_DST_PORT, RETRANSMITTED_IN_PKTS, MIN_TTL</pre>
     desc:"The embedding is searched against every case this model stored so far in this self-memory run.",
     body:`<div class="kv-grid">
       <div class="kv"><div class="k">store</div><div class="v">bself-gemma4-26b-p3</div></div>
-      <div class="kv"><div class="k">cases searched</div><div class="v">212 (this alert is #213)</div></div>
+      <div class="kv"><div class="k">cases searched</div><div class="v">235 (this alert is #236)</div></div>
       <div class="kv"><div class="k">retrieval latency</div><div class="v">21.33 ms (embed 18.92 + query 2.41)</div></div>
     </div>`
   },
@@ -688,10 +688,10 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
     title:"Step 11B — the new verdict is written back into memory", script:"src/memsoc/memory/store.py — write path",
     desc:"Because this is the self-memory condition, this verdict becomes a new stored case — the next similar alert in the run will retrieve it too.",
     body:`<pre class="data">{
-  "seq": 212, "case_id": "bself-gemma4-26b-p3:000212",
+  "seq": 235, "case_id": "bself-gemma4-26b-p3:000235",
   "uid": "${UID}", "written": true, "policy": "write_all",
   "embed_ms": 18.92, "add_ms": 14.77,
-  "collection_count_after": <span class="hl">213</span>
+  "collection_count_after": <span class="hl">236</span>
 }</pre>
     <div class="caveat">This exact case — Exploits, 0.95, correcting the detector — is now part of memory. Any
     future alert on port 1433 with this shape will retrieve it as precedent #1.</div>`
