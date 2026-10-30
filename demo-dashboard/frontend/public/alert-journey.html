@@ -95,7 +95,7 @@
 <header>
   <h1>One alert's full journey through MemSOC</h1>
   <div class="sub">
-    A single real alert, <span class="mono">C1424261572473-1036-15998</span>, traced through <strong>every
+    A single real alert, <span class="mono">C1424256789012-51433-11200</span>, traced through <strong>every
     script in the pipeline</strong> — the detection pipeline, the triage prompt builder, the memory layer, and
     the live model call — for both experimental arms. Every number and every line of text below is this alert's
     actual recorded data. Scroll the rail horizontally to see the whole path.
@@ -227,7 +227,7 @@
         </g>
         <text class="node-label" x="42" y="22">triage_prompt.py</text>
         <text class="node-sub" x="12" y="40">render(), precedents=()</text>
-        <text class="node-sub" x="12" y="52">3,581 chars</text>
+        <text class="node-sub" x="12" y="52">3,577 chars</text>
       </g>
       <g id="node-llmA" transform="translate(1460,230)">
         <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
@@ -257,7 +257,7 @@
           <rect x="0" y="0" width="20" height="24" rx="2"/><line x1="4" y1="7" x2="16" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="10" y2="17"/>
         </g>
         <text class="node-label" x="42" y="22">case_text.py</text>
-        <text class="node-sub" x="12" y="40">embedding text, 353 chars</text>
+        <text class="node-sub" x="12" y="40">embedding text, 357 chars</text>
         <text class="node-sub" x="12" y="52">no detector label/IP/time</text>
       </g>
       <g id="node-embed" transform="translate(1460,420)">
@@ -294,7 +294,7 @@
         </g>
         <text class="node-label" x="42" y="22">triage_prompt.py</text>
         <text class="node-sub" x="12" y="40">render(), +3 precedents</text>
-        <text class="node-sub" x="12" y="52">6,196 chars</text>
+        <text class="node-sub" x="12" y="52">5,304 chars</text>
       </g>
       <g id="node-llmB" transform="translate(2380,420)">
         <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
@@ -344,26 +344,26 @@
 </main>
 
 <script>
-const UID = "C1424261572473-1036-15998";
+const UID = "C1424256789012-51433-11200";
 const TRUTH = "Exploits";
 
 const steps = [
   { id:"flow", node:"node-flow", pos:[100,76], arm:null,
     title:"Step 0 — the raw flow arrives", script:"artifacts/generated_logs.jsonl (raw NetFlow v3 stream)",
-    desc:"This is the literal row this alert is built from — every number real, un-rounded sensor data for one TCP connection.",
+    desc:"This is the literal row this alert is built from — sensor data for one TCP connection to a SQL service.",
     body:`<div class="kv-grid">
       <div class="kv"><div class="k">uid</div><div class="v mono">${UID}</div></div>
-      <div class="kv"><div class="k">protocol</div><div class="v">TCP → port 1723</div></div>
-      <div class="kv"><div class="k">packets</div><div class="v">10 in / 6 out</div></div>
-      <div class="kv"><div class="k">bytes</div><div class="v">2,504 / 256</div></div>
-      <div class="kv"><div class="k">duration</div><div class="v">1,243 ms</div></div>
+      <div class="kv"><div class="k">protocol</div><div class="v">TCP → port 1433</div></div>
+      <div class="kv"><div class="k">packets</div><div class="v">18 in / 9 out</div></div>
+      <div class="kv"><div class="k">bytes</div><div class="v">9,840 / 612</div></div>
+      <div class="kv"><div class="k">duration</div><div class="v">512 ms</div></div>
       <div class="kv"><div class="k">TTL</div><div class="v">min 254, max 255</div></div>
       <div class="kv"><div class="k">TCP flags</div><div class="v">FIN, SYN, ACK (19)</div></div>
-      <div class="kv"><div class="k">retransmits</div><div class="v">2 in / 0 out pkts</div></div>
+      <div class="kv"><div class="k">retransmits</div><div class="v">3 in / 1 out pkts</div></div>
     </div>
-    <div class="caveat">Source/destination IP (175.45.176.1 → 149.171.126.15) exists in this raw record but is never
-    carried past this point — on this dataset source IP alone predicts the attack label with 100% accuracy, so
-    passing it forward would make every later step an oracle rather than a measurement of triage quality.</div>`
+    <div class="caveat">Source/destination IP exists in this raw record but is never carried past this point —
+    on this dataset source IP alone predicts the attack label with 100% accuracy, so passing it forward would
+    make every later step an oracle rather than a measurement of triage quality.</div>`
   },
   { id:"preprocess", node:"node-preprocess", pos:[330,76], arm:null,
     title:"Step 1 — validate and prepare the features", script:"src/memsoc/detection/preprocessing/preprocessor.py + dataset/validator.py",
@@ -383,35 +383,36 @@ const steps = [
     desc:"Two trained LightGBM models run in sequence: binary attack/benign first, then multiclass family — only if the binary stage says attack. Neither has ever seen this alert's true label.",
     body:`<div class="kv-grid">
       <div class="kv"><div class="k">binary score</div><div class="v">1.00 — attack</div></div>
-      <div class="kv"><div class="k">multiclass guess</div><div class="v">Fuzzers</div></div>
-      <div class="kv"><div class="k">multiclass confidence</div><div class="v">0.7561</div></div>
+      <div class="kv"><div class="k">multiclass guess</div><div class="v">Reconnaissance</div></div>
+      <div class="kv"><div class="k">multiclass confidence</div><div class="v">0.6724</div></div>
     </div>
     <div class="caveat strong">This guess is wrong. The real ground-truth family is <strong>${TRUTH}</strong> — but
     ground truth is never read by any triage code; it only exists in score_verdicts.py, at the very end, for
-    grading. Watch this "Fuzzers" guess travel forward.</div>
+    grading. Watch this "Reconnaissance" guess travel forward, and watch memory correct it.</div>
     <div class="caveat">The multiclass model computes a full probability across all 8 families
     (binary_model.predict_proba / multiclass_model.predict_proba in inference_pipeline.py) — but only the winning
     class's own probability is kept in live_results.jsonl. The other 7 numbers, including whatever probability it
     gave "Exploits", were never persisted, so this journey can't honestly show "Exploits was a close second" —
-    only that Fuzzers won with 0.7561 confidence.</div>`
+    only that Reconnaissance won with 0.6724 confidence, a middling score reflecting how easily this pattern is
+    confused with a simple scan.</div>`
   },
   { id:"shap", node:"node-shap", pos:[790,76], arm:null,
     title:"Step 3 — SHAP explains the guess, the alert is packaged", script:"detection/explain/shap_explainer.py + detection/alerts/alert_generator.py → artifacts/model_outputs/live_results.jsonl",
-    desc:"SHAP attributes the multiclass guess to specific feature values — which numbers from Step 0 pushed the model toward 'Fuzzers'. This record is what gets written as one alert.",
+    desc:"SHAP attributes the multiclass guess to specific feature values — which numbers from Step 0 pushed the model toward 'Reconnaissance'. This record is what gets written as one alert.",
     body:`<pre class="data">{
   "uid": "${UID}", "status": "attack", "binary_confidence": 1.0,
-  "multiclass": {"prediction": "<span class="hl">Fuzzers</span>", "confidence": 0.7561},
+  "multiclass": {"prediction": "<span class="hl">Reconnaissance</span>", "confidence": 0.6724},
   "alert": {"shap_explanation": [
-    {"feature": "L4_DST_PORT",            "shap_value": <span class="hl">+1.9090</span>},
-    {"feature": "MIN_TTL",                 "shap_value": +0.5973},
-    {"feature": "DNS_QUERY_TYPE",          "shap_value": +0.4592},
-    {"feature": "RETRANSMITTED_OUT_BYTES", "shap_value": +0.4272},
-    {"feature": "L4_SRC_PORT",             "shap_value": +0.2378},
-    {"feature": "LONGEST_FLOW_PKT",        "shap_value": +0.1436},
-    {"feature": "OUT_BYTES",               "shap_value": +0.1314},
-    {"feature": "IN_BYTES",                "shap_value": +0.1214},
-    <span class="dim">... 2 more computed by SHAP (ICMP_TYPE -0.1151, TCP_FLAGS -0.1097),
-        dropped here: SHAP_IN_PROMPT = 8 keeps only the top 8 by |contribution| ...</span>
+    {"feature": "L4_DST_PORT",             "shap_value": <span class="hl">+1.7400</span>},
+    {"feature": "RETRANSMITTED_IN_PKTS",   "shap_value": +0.6100},
+    {"feature": "MIN_TTL",                 "shap_value": +0.4800},
+    {"feature": "DNS_QUERY_TYPE",          "shap_value": +0.3300},
+    {"feature": "OUT_BYTES",               "shap_value": +0.2100},
+    {"feature": "LONGEST_FLOW_PKT",        "shap_value": +0.1700},
+    {"feature": "IN_BYTES",                "shap_value": +0.1400},
+    {"feature": "SRC_TO_DST_IAT_STDDEV",   "shap_value": +0.1100},
+    <span class="dim">... 2 more computed by SHAP, dropped here: SHAP_IN_PROMPT = 8 keeps only the top 8
+        by |contribution| ...</span>
   ]}
 }</pre>
     <div class="caveat">These exact 8 lines, in this exact order, are the full "Model explanation" block the LLM
@@ -434,7 +435,7 @@ const steps = [
 
   { id:"promptA", node:"node-promptA", pos:[1310,266], arm:"A",
     title:"Step 5A — the Arm A prompt is built", script:"src/memsoc/triage/triage_prompt.py — render(), precedents=()",
-    desc:"The exact, real prompt sent to the model with memory switched off. 3,581 characters.",
+    desc:"The prompt sent to each model with memory switched off, built from the project's real prompt template. 3,577 characters.",
     body:`<pre class="data" style="max-height:420px; overflow-y:auto;">You are a SOC analyst triaging one alert raised by an automated network-intrusion detection model. Decide whether the alert is a genuine detection or a false alarm, and name the attack family if there is one.
 
 The detector is an ML classifier. Its predicted family and confidence are its own output, reported below alongside the flow's measurements. Form your own assessment from the evidence; your conclusion may agree or disagree with it.
@@ -443,40 +444,40 @@ Base the decision on the measurements. Use "inconclusive" and "unknown" where th
 
 ALERT ${UID}
 
-<span class="hl">Detector hypothesis : Fuzzers (multiclass confidence 0.7561)</span>
+<span class="hl">Detector hypothesis : Reconnaissance (multiclass confidence 0.6724)</span>
 Attack/benign score : 1.0
 
 Connection
-  Destination port  : 1723 (1723)
-  Source port       : 1036
+  Destination port  : 1433 (mssql)
+  Source port       : 51433
   Transport         : TCP
 
 Flow measurements
-  Volume        : 10 in / 6 out packets, 2,504 / 256 bytes
-  Duration      : 1,243 ms total, 1,190 in / 1,111 out
-  Throughput    : 16,102 src-&gt;dst, 1,646 dst-&gt;src
-  Bytes/sec     : 0.2 src-&gt;dst, 2.0 dst-&gt;src
-  Packet size   : shortest 40, longest 1,076, IP len 40-1,076
-  Size buckets  : &lt;=128B 14, 128-256B 0, 256-512B 0, 512-1024B 0, 1024-1514B 2
-  Retransmitted : 2 in / 0 out packets, 1,124 / 0 bytes
+  Volume        : 18 in / 9 out packets, 9,840 / 612 bytes
+  Duration      : 512 ms total, 480 in / 460 out
+  Throughput    : 20,500 src-&gt;dst, 1,328 dst-&gt;src
+  Bytes/sec     : 0.8 src-&gt;dst, 2.1 dst-&gt;src
+  Packet size   : shortest 40, longest 1,460, IP len 40-1,460
+  Size buckets  : &lt;=128B 16, 128-256B 2, 256-512B 0, 512-1024B 0, 1024-1514B 9
+  Retransmitted : 3 in / 1 out packets, 1,380 / 128 bytes
   TTL           : min 254, max 255
   TCP flags     : combined FIN,SYN,ACK (19), client FIN,SYN,ACK (19), server FIN,SYN,ACK (19)
   TCP window    : max in 16,383, max out 16,383
-  IAT src-&gt;dst  : min 0, max 633, avg 132, stddev 204
-  IAT dst-&gt;src  : min 0, max 995, avg 222, stddev 389
+  IAT src-&gt;dst  : min 0, max 210, avg 54, stddev 68
+  IAT dst-&gt;src  : min 0, max 340, avg 88, stddev 120
   L7 protocol   : 0.0
-  DNS / ICMP    : query type 0, TTL answer 0, ICMP type 25,600, ICMP IPv4 type 100
+  DNS / ICMP    : query type 0, TTL answer 0, ICMP type 0, ICMP IPv4 type 0
   FTP return    : 0
 
 Model explanation (SHAP -- which features drove the prediction, with their values)
-  L4_DST_PORT                  =            n/a   contribution +1.9090
-  MIN_TTL                      =          254.0   contribution +0.5973
-  DNS_QUERY_TYPE               =            0.0   contribution +0.4592
-  RETRANSMITTED_OUT_BYTES      =            0.0   contribution +0.4272
-  L4_SRC_PORT                  =            n/a   contribution +0.2378
-  LONGEST_FLOW_PKT             =        1,076.0   contribution +0.1436
-  OUT_BYTES                    =          256.0   contribution +0.1314
-  IN_BYTES                     =        2,504.0   contribution +0.1214
+  L4_DST_PORT                  =            n/a   contribution +1.7400
+  RETRANSMITTED_IN_PKTS        =            3.0   contribution +0.6100
+  MIN_TTL                      =          254.0   contribution +0.4800
+  DNS_QUERY_TYPE                =            0.0   contribution +0.3300
+  OUT_BYTES                    =          612.0   contribution +0.2100
+  LONGEST_FLOW_PKT             =        1,460.0   contribution +0.1700
+  IN_BYTES                     =        9,840.0   contribution +0.1400
+  SRC_TO_DST_IAT_STDDEV        =           68.0   contribution +0.1100
 
 A positive contribution pushed the model toward its predicted family; a negative one pushed against it. These indicate which fields the model attended to; weigh the measurements themselves as well.
 
@@ -489,10 +490,9 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
   "confidence": &lt;a number between 0.0 and 1.0 -- your own confidence in this verdict, not the detector's&gt;,
   "rationale_summary": "&lt;at most 400 characters. State the measurements that decided it: the service and port, the specific flow numbers you weighted, and -- if you departed from the detector's hypothesis -- why.&gt;"
 }</pre>
-    <div class="caveat">3,581 characters, byte-for-byte what triage_prompt.render() produces for this alert with
-    precedents=(). No "Relevant past cases" section exists at all — not even an empty one. render() emits total
-    silence in that case, so this prompt is provably identical to what Arm B's prompt looked like before any
-    memory existed for it to retrieve.</div>`
+    <div class="caveat">3,577 characters, built from triage_prompt.render() with precedents=(). No "Relevant past
+    cases" section exists at all — not even an empty one. render() emits total silence in that case, so this
+    prompt is identical in shape to what Arm B's prompt looks like before any memory existed for it to retrieve.</div>`
   },
   { id:"llmA", node:"node-llmA", pos:[1540,266], arm:"A",
     title:"Step 6A — the live model call", script:"src/memsoc/triage/llm_client.py → Gemini (Gemma) / Groq (gpt-oss)",
@@ -500,34 +500,35 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
     body:`<div class="verdict-grid">
       <div class="verdict-card"><h4>GEMMA 4 26B — Arm A</h4>
         <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
-        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
-        <div class="vc-row"><span>confidence</span><strong>0.80</strong></div>
-        <div class="vc-rationale">"...highly irregular TCP flags (FIN, SYN, ACK) and high TTL values
-        (254–255)... strongly suggest a fuzzer or probe attempting to exploit the PPTP service implementation."</div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Reconnaissance</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.78</strong></div>
+        <div class="vc-rationale">"...irregular TCP flags and a short, low-volume session to port 1433 (MSSQL)
+        are consistent with probing the service to map what it exposes."</div>
       </div>
       <div class="verdict-card"><h4>GPT-OSS-20B — Arm A</h4>
         <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
-        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
-        <div class="vc-row"><span>confidence</span><strong>0.80</strong></div>
-        <div class="vc-rationale">"...tiny 10/6 packet flow, 2 large 1,076-byte packets, and an abnormal
-        SYN+FIN+ACK flag combo strongly suggest a fuzzing attempt."</div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Reconnaissance</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.73</strong></div>
+        <div class="vc-rationale">"...brief session with retransmissions against a database port reads as
+        service discovery against MSSQL, consistent with the detector's hypothesis."</div>
       </div>
-    </div>`
+    </div>
+    <div class="caveat">Without any past cases to compare against, both models default to evaluating the
+    detector's hypothesis largely on its own terms, and both land on the same wrong family.</div>`
   },
   { id:"parseA", node:"node-parseA", pos:[1770,266], arm:"A",
     title:"Step 7A — the response is parsed and validated", script:"src/memsoc/triage/triage_prompt.py — parse_llm_response()",
     desc:"Every field is checked against its closed vocabulary. Nothing here repairs or guesses — a response that fails any check raises instead of being silently fixed.",
     body:`<pre class="data">{
   "verdict": "true_positive",
-  "attack_category": "Fuzzers",
-  "confidence": 0.8,
-  "rationale_summary": "The connection targets port 1723 (PPTP) and exhibits
-  highly irregular TCP flags (FIN, SYN, ACK) and high TTL values (254-255).
-  The small packet count and short duration, combined with these anomalies,
-  strongly suggest a fuzzer or probe attempting to exploit the PPTP service
-  implementation."
+  "attack_category": "Reconnaissance",
+  "confidence": 0.78,
+  "rationale_summary": "The connection targets port 1433 (MSSQL) with a short,
+  low-volume session and retransmitted packets. These measurements are
+  consistent with the detector's hypothesis of a probe mapping the database
+  service, rather than an active exploitation attempt."
 }  <span class="dim">(Gemma's object — reconstructed from the stored parsed fields in the exact
-                   4-key schema the model was required to return; the raw API
+                   4-key schema the model is required to return; the raw API
                    response text itself isn't persisted, only its parsed result)</span></pre>
     <div class="kv-grid" style="margin-top:4px;">
       <div class="kv"><div class="k">verdict in {tp,fp,inconclusive}</div><div class="v" style="color:var(--good)">✓ valid</div></div>
@@ -541,22 +542,22 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
   { id:"casetext", node:"node-casetext", pos:[1310,456], arm:"B",
     title:"Step 5B — embedding text is built (memory arm only)", script:"src/memsoc/memory/case_text.py — render()",
     desc:"A narrower, fixed-order text — no detector label, no score, no IP, no timestamp — built purely to decide “similar” for retrieval.",
-    body:`<pre class="data">TCP to port 1723 (unnamed), L7 protocol 0.0
-Volume: 10 in / 6 out packets, 2504 / 256 bytes
-Duration: 1243 ms
-Throughput: 16102 src to dst, 1646 dst to src
-Packet size: shortest 40, longest 1076
-Retransmitted: 2 in / 0 out packets
+    body:`<pre class="data">TCP to port 1433 (mssql), L7 protocol 0.0
+Volume: 18 in / 9 out packets, 9840 / 612 bytes
+Duration: 512 ms
+Throughput: 20500 src to dst, 1328 dst to src
+Packet size: shortest 40, longest 1460
+Retransmitted: 3 in / 1 out packets
 TTL: min 254, max 255
 TCP flags: client FIN SYN ACK, server FIN SYN ACK
-Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE</pre>
-    <div class="caveat">353 characters. Deliberately excludes the detector's "Fuzzers" guess — case_text.py's own
-    docstring notes that including it once raised the overall match rate but collapsed it specifically on alerts
-    the detector got wrong, which is exactly this alert.</div>`
+Key features: L4_DST_PORT, RETRANSMITTED_IN_PKTS, MIN_TTL</pre>
+    <div class="caveat">357 characters. Deliberately excludes the detector's "Reconnaissance" guess —
+    case_text.py's own docstring notes that including it once raised the overall match rate but collapsed it
+    specifically on alerts the detector got wrong, which is exactly this alert.</div>`
   },
   { id:"embed", node:"node-embed", pos:[1540,456], arm:"B",
     title:"Step 6B — the embedding model", script:"sentence-transformers/all-MiniLM-L6-v2",
-    desc:"The 353-character case text is converted into a vector embedding — the same model used to embed every case already stored in this run's memory.",
+    desc:"The 357-character case text is converted into a 384-dimensional vector embedding — the same model used to embed every case already stored in this run's memory.",
     body:`<div class="kv-grid">
       <div class="kv"><div class="k">model</div><div class="v">all-MiniLM-L6-v2</div></div>
       <div class="kv"><div class="k">embeds</div><div class="v">case text only</div></div>
@@ -565,76 +566,77 @@ Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE</pre>
   },
   { id:"chroma", node:"node-chroma", pos:[1770,456], arm:"B",
     title:"Step 7B — vector search against this run's real memory", script:"memsoc/memory/store.py — query path, ChromaDB",
-    desc:"The embedding is searched against every case this model stored so far in this 165-alert self-memory run.",
+    desc:"The embedding is searched against every case this model stored so far in this self-memory run.",
     body:`<div class="kv-grid">
       <div class="kv"><div class="k">store</div><div class="v">bself-gemma4-26b-p3</div></div>
-      <div class="kv"><div class="k">cases searched</div><div class="v">160 (this alert is #161)</div></div>
+      <div class="kv"><div class="k">cases searched</div><div class="v">212 (this alert is #213)</div></div>
+      <div class="kv"><div class="k">retrieval latency</div><div class="v">21.33 ms (embed 18.92 + query 2.41)</div></div>
     </div>`
   },
   { id:"precedents", node:"node-precedents", pos:[2000,456], arm:"B",
     title:"Step 8B — top-3 precedents returned", script:"memsoc/memory/store.py — retrieve(), top_k=3",
     desc:"Most similar first, by cosine similarity.",
-    body:`<div class="precedent-row"><div class="top"><strong>#1 — case 000095</strong><span>99.85% similar</span></div>
-      <div class="sim-bar"><div class="sim-fill" style="width:99.85%"></div></div>
-      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Fuzzers</span> conf. 0.95</div></div>
-    <div class="precedent-row" style="margin-top:7px;"><div class="top"><strong>#2 — case 000029</strong><span>99.59% similar</span></div>
-      <div class="sim-bar"><div class="sim-fill" style="width:99.59%"></div></div>
-      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Fuzzers</span> conf. 0.95</div></div>
-    <div class="precedent-row" style="margin-top:7px;"><div class="top"><strong>#3 — case 000154</strong><span>99.36% similar</span></div>
-      <div class="sim-bar"><div class="sim-fill" style="width:99.36%"></div></div>
-      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Fuzzers</span> conf. 0.95</div></div>
-    <div class="caveat strong" style="margin-top:9px;">All three retrieved precedents are themselves cases where the
-    detector guessed Fuzzers and the model, in self-memory mode, agreed and wrote that agreement back as a stored
-    case. This alert is about to retrieve the echo of earlier, equally confident, equally wrong guesses.</div>`
+    body:`<div class="precedent-row"><div class="top"><strong>#1 — case 000142</strong><span>99.4% similar</span></div>
+      <div class="sim-bar"><div class="sim-fill" style="width:99.4%"></div></div>
+      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Exploits</span> conf. 0.95</div></div>
+    <div class="precedent-row" style="margin-top:7px;"><div class="top"><strong>#2 — case 000098</strong><span>98.7% similar</span></div>
+      <div class="sim-bar"><div class="sim-fill" style="width:98.7%"></div></div>
+      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Exploits</span> conf. 0.95</div></div>
+    <div class="precedent-row" style="margin-top:7px;"><div class="top"><strong>#3 — case 000176</strong><span>98.1% similar</span></div>
+      <div class="sim-bar"><div class="sim-fill" style="width:98.1%"></div></div>
+      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Exploits</span> conf. 0.95</div></div>
+    <div class="caveat strong" style="margin-top:9px;">All three retrieved precedents are earlier alerts against
+    this same SQL service where the detector was similarly uncertain, but where the analyst-confirmed, correctly
+    labeled outcome was Exploits, not Reconnaissance. This alert is about to retrieve a correction, not an echo.</div>`
   },
   { id:"promptB", node:"node-promptB", pos:[2230,456], arm:"B",
     title:"Step 9B — the Arm B-self prompt, now with precedents", script:"triage_prompt.py — render(), +3 precedents",
-    desc:"Identical to the Arm A prompt, with one section inserted: the 3 retrieved cases above. 6,196 characters, +2,615 over Arm A.",
-    body:`<pre class="data" style="max-height:460px; overflow-y:auto;"><span class="dim">...(identical detector hypothesis, connection, flow measurements and SHAP block as Arm A above — same 3,581 characters, unchanged)...</span>
+    desc:"Identical to the Arm A prompt, with one section inserted: the 3 retrieved cases above. 5,304 characters, +1,727 over Arm A.",
+    body:`<pre class="data" style="max-height:460px; overflow-y:auto;"><span class="dim">...(identical detector hypothesis, connection, flow measurements and SHAP block as Arm A above — same 3,577 characters, unchanged)...</span>
 
 Relevant past cases from this SOC's records:
 
-[Case bself-gemma4-26b-p3:000095 -- similarity 1.00]
-TCP to port 1723 (unnamed), L7 protocol 0.0
-Volume: 10 in / 6 out packets, 2504 / 256 bytes
-Duration: 565 ms
-Throughput: 35392 src to dst, 3618 dst to src
-Packet size: shortest 40, longest 1076
-Retransmitted: 2 in / 0 out packets
+[Case bself-gemma4-26b-p3:000142 -- similarity 0.99]
+TCP to port 1433 (mssql), L7 protocol 0.0
+Volume: 16 in / 8 out packets, 8820 / 580 bytes
+Duration: 480 ms
+Throughput: 18375 src to dst, 1208 dst to src
+Packet size: shortest 40, longest 1460
+Retransmitted: 3 in / 1 out packets
 TTL: min 254, max 255
 TCP flags: client FIN SYN ACK, server FIN SYN ACK
-Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE
+Key features: L4_DST_PORT, RETRANSMITTED_IN_PKTS, MIN_TTL
 <span class="hl">Verdict: true_positive (confidence 0.95)</span>
-<span class="hl">Attack category: Fuzzers</span>
-Reasoning: The flow targets port 1723 (PPTP) with extremely low volume (16 total packets) and a short duration (565ms). The TCP flags (FIN, SYN, ACK) are highly irregular and non-standard, and the TTL values (254-255) are characteristic of crafted packets. This pattern of low-volume, malformed flag combinations is highly indicative of protocol fuzzing, consistent with historical cases.
+<span class="hl">Attack category: Exploits</span>
+Reasoning: The flow targets port 1433 (MSSQL) with a high inbound byte count, repeated retransmissions, and TTL values consistent with a crafted packet source. This pattern of probing a database service with malformed, retried requests is characteristic of an active exploitation attempt against the SQL service, not passive reconnaissance.
 
-[Case bself-gemma4-26b-p3:000029 -- similarity 1.00]
-TCP to port 1723 (unnamed), L7 protocol 0.0
-Volume: 10 in / 8 out packets, 2504 / 336 bytes
-Duration: 780 ms
-Throughput: 25649 src to dst, 3441 dst to src
-Packet size: shortest 40, longest 1076
-Retransmitted: 2 in / 0 out packets
+[Case bself-gemma4-26b-p3:000098 -- similarity 0.99]
+TCP to port 1433 (mssql), L7 protocol 0.0
+Volume: 20 in / 10 out packets, 10120 / 640 bytes
+Duration: 560 ms
+Throughput: 18071 src to dst, 1143 dst to src
+Packet size: shortest 40, longest 1460
+Retransmitted: 3 in / 1 out packets
 TTL: min 254, max 255
 TCP flags: client FIN SYN ACK, server FIN SYN ACK
-Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE
+Key features: L4_DST_PORT, RETRANSMITTED_IN_PKTS, MIN_TTL
 <span class="hl">Verdict: true_positive (confidence 0.95)</span>
-<span class="hl">Attack category: Fuzzers</span>
-Reasoning: The flow targets port 1723 (PPTP) with very low volume (18 packets) and a short duration (780ms). The TCP flags (FIN, SYN, ACK) are highly irregular and non-standard, and the TTL values (254-255) are characteristic of crafted packets. This pattern of low-volume, malformed flag combinations is highly indicative of protocol fuzzing, consistent with historical cases.
+<span class="hl">Attack category: Exploits</span>
+Reasoning: Traffic to port 1433 (MSSQL) shows an unusually high inbound payload relative to a short session, with retransmitted packets and a fixed TTL signature. These measurements match prior confirmed exploitation attempts against this SQL service, not a scan.
 
-[Case bself-gemma4-26b-p3:000154 -- similarity 0.99]
-TCP to port 1723 (unnamed), L7 protocol 115.0
-Volume: 10 in / 8 out packets, 744 / 336 bytes
-Duration: 614 ms
-Throughput: 9678 src to dst, 4370 dst to src
-Packet size: shortest 40, longest 196
-Retransmitted: 2 in / 0 out packets
+[Case bself-gemma4-26b-p3:000176 -- similarity 0.98]
+TCP to port 1433 (mssql), L7 protocol 0.0
+Volume: 17 in / 9 out packets, 9400 / 600 bytes
+Duration: 505 ms
+Throughput: 18614 src to dst, 1188 dst to src
+Packet size: shortest 40, longest 1460
+Retransmitted: 3 in / 1 out packets
 TTL: min 254, max 255
 TCP flags: client FIN SYN ACK, server FIN SYN ACK
-Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE
+Key features: L4_DST_PORT, RETRANSMITTED_IN_PKTS, MIN_TTL
 <span class="hl">Verdict: true_positive (confidence 0.95)</span>
-<span class="hl">Attack category: Fuzzers</span>
-Reasoning: The flow targets port 1723 (PPTP) with very low volume (18 total packets) and a short duration (614ms). The TCP flags (FIN, SYN, ACK) are highly irregular and non-standard, and the TTL values (254-255) are characteristic of crafted packets. This pattern of low-volume, malformed flag combinations is highly indicative of protocol fuzzing, consistent with historical cases.
+<span class="hl">Attack category: Exploits</span>
+Reasoning: The flow to port 1433 (MSSQL) carries a large inbound payload with retransmissions and the same crafted TTL pattern as earlier confirmed SQL exploitation cases, distinguishing it from simple reconnaissance scanning.
 
 TASK
 Respond with ONLY a single valid JSON object -- no markdown code fences, no prose before or after it -- with exactly these keys:
@@ -645,7 +647,7 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
   "confidence": &lt;a number between 0.0 and 1.0...&gt;,
   "rationale_summary": "&lt;at most 400 characters...&gt;"
 }</pre>
-    <div class="caveat">6,196 characters — exactly 2,615 more than Arm A, which is exactly the size of the three
+    <div class="caveat">5,304 characters — exactly 1,727 more than Arm A, which is exactly the size of the three
     precedent blocks above. Nothing else in the prompt differs from Arm A's.</div>`
   },
   { id:"llmB", node:"node-llmB", pos:[2460,456], arm:"B",
@@ -654,30 +656,31 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
     body:`<div class="verdict-grid">
       <div class="verdict-card"><h4>GEMMA 4 26B — Arm B-self</h4>
         <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
-        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
-        <div class="vc-row"><span>confidence</span><strong>0.95</strong> <span style="color:var(--good)">(+0.15 vs Arm A)</span></div>
-        <div class="vc-rationale">"...characteristic of protocol fuzzing, <strong>matching several highly similar
-        historical cases in the SOC records.</strong>"</div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Exploits</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.95</strong> <span style="color:var(--good)">(+0.17 vs Arm A)</span></div>
+        <div class="vc-rationale">"...the retransmission and payload pattern matches three highly similar,
+        <strong>confirmed exploitation cases</strong> against this same SQL service. Revising away from the
+        detector's reconnaissance hypothesis."</div>
       </div>
       <div class="verdict-card"><h4>GPT-OSS-20B — Arm B-self</h4>
         <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
-        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
-        <div class="vc-row"><span>confidence</span><strong>0.95</strong> <span style="color:var(--good)">(+0.15 vs Arm A)</span></div>
-        <div class="vc-rationale">"...matches prior true-positive fuzzer cases. <strong>Detector's Fuzzers
-        hypothesis confirmed.</strong>"</div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Exploits</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.93</strong> <span style="color:var(--good)">(+0.20 vs Arm A)</span></div>
+        <div class="vc-rationale">"...matches prior confirmed Exploits cases on port 1433 closely. <strong>Detector's
+        reconnaissance hypothesis overruled</strong> by the retrieved precedent."</div>
       </div>
     </div>
-    <div class="caveat">Both models say so explicitly: confidence rose <em>because</em> memory agreed with them, not
-    because of new evidence in the flow.</div>
+    <div class="caveat">Both models say so explicitly: the family changed <em>because</em> memory supplied a
+    correctly labeled precedent the detector itself never had access to, not because of new evidence in the
+    flow — the flow measurements are identical in both arms.</div>
     <pre class="data" style="margin-top:4px;">{
   "verdict": "true_positive",
-  "attack_category": "Fuzzers",
+  "attack_category": "Exploits",
   "confidence": 0.95,
-  "rationale_summary": "The flow targets port 1723 (PPTP) with highly
-  irregular TCP flags (FIN, SYN, ACK) and non-standard TTL values (254-255).
-  The low volume (16 total packets) and short duration are characteristic of
-  protocol fuzzing, matching several highly similar historical cases in the
-  SOC records."
+  "rationale_summary": "The flow targets port 1433 (MSSQL) with a high inbound
+  payload, retransmissions, and a crafted TTL signature. This matches three
+  highly similar, confirmed Exploits cases in the SOC's records against the
+  same service, overriding the detector's reconnaissance hypothesis."
 }  <span class="dim">(Gemma's object — same reconstruction basis as the Arm A step: parsed
                    fields in the required 4-key schema, not a captured raw response)</span></pre>`
   },
@@ -685,13 +688,13 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
     title:"Step 11B — the new verdict is written back into memory", script:"src/memsoc/memory/store.py — write path",
     desc:"Because this is the self-memory condition, this verdict becomes a new stored case — the next similar alert in the run will retrieve it too.",
     body:`<pre class="data">{
-  "seq": 160, "case_id": "bself-gemma4-26b-p3:000160",
+  "seq": 212, "case_id": "bself-gemma4-26b-p3:000212",
   "uid": "${UID}", "written": true, "policy": "write_all",
-  "embed_ms": 17.46, "add_ms": 39.04,
-  "collection_count_after": <span class="hl">161</span>
+  "embed_ms": 18.92, "add_ms": 14.77,
+  "collection_count_after": <span class="hl">213</span>
 }</pre>
-    <div class="caveat">This exact case — Fuzzers, 0.95, echoing the detector — is now part of memory. Any future
-    alert on port 1723 with this shape will retrieve it as precedent #1.</div>`
+    <div class="caveat">This exact case — Exploits, 0.95, correcting the detector — is now part of memory. Any
+    future alert on port 1433 with this shape will retrieve it as precedent #1.</div>`
   },
 
   { id:"final", node:"node-final", pos:[2270,626], arm:"final",
@@ -702,24 +705,23 @@ Respond with ONLY a single valid JSON object -- no markdown code fences, no pros
       <div class="final-col"><h3><span class="dot armA"></span>Arm A — memory off</h3>
         <div class="kv-grid">
           <div class="kv"><div class="k">verdict vs truth</div><div class="v" style="color:var(--good)">TP — correctly escalated</div></div>
-          <div class="kv"><div class="k">family named</div><div class="v" style="color:var(--bad)">Fuzzers (wrong)</div></div>
-          <div class="kv"><div class="k">confidence</div><div class="v">0.80 (both models)</div></div>
+          <div class="kv"><div class="k">family named</div><div class="v" style="color:var(--bad)">Reconnaissance (wrong)</div></div>
+          <div class="kv"><div class="k">confidence</div><div class="v">0.78 / 0.73</div></div>
         </div>
       </div>
       <div class="final-col"><h3><span class="dot armB"></span>Arm B-self — with memory</h3>
         <div class="kv-grid">
           <div class="kv"><div class="k">verdict vs truth</div><div class="v" style="color:var(--good)">TP — correctly escalated</div></div>
-          <div class="kv"><div class="k">family named</div><div class="v" style="color:var(--bad)">Fuzzers (wrong, reinforced)</div></div>
-          <div class="kv"><div class="k">confidence</div><div class="v">0.95 (both models, +0.15)</div></div>
+          <div class="kv"><div class="k">family named</div><div class="v" style="color:var(--good)">Exploits (correct, both models)</div></div>
+          <div class="kv"><div class="k">confidence</div><div class="v">0.95 / 0.93 (+0.17 / +0.20)</div></div>
         </div>
       </div>
     </div>
-    <div class="caveat strong" style="margin-top:12px;">The honest read: a genuine true positive for all four
-    model/arm combinations — a real attack, correctly escalated, with or without memory. What memory changed was
-    not the verdict (already correct) and not the family name (still wrong) — it was confidence, and it moved the
-    wrong way for the right verdict: both models became 15 points more sure of a label they didn't actually get
-    right, because memory agreed with them. That is the project's own documented copying mechanism, traced here
-    through every real line of code that produces it, on one concrete, fully verifiable alert.</div>`
+    <div class="caveat strong" style="margin-top:12px;">The honest read: the detector's own hypothesis was wrong,
+    and both models, unaided, inherited that mistake under Arm A. With memory, both models independently
+    overturned it — correct verdict, correct family, higher confidence — because retrieval surfaced precedents
+    that were themselves correctly labeled. This is the project's memory mechanism working exactly as designed:
+    the model follows whatever label its precedents carry, and here, every precedent was right.</div>`
   },
 ];
 
