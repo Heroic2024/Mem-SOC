@@ -1,4 +1,4 @@
-export default function Architecture() {
+export default function Architecture({ onNavigate }) {
   return (
     <section id="architecture">
       <div className="section-head">
@@ -17,6 +17,21 @@ export default function Architecture() {
           <img src="/diagrams/three-arms.png" alt="Arm A, B-self and B-oracle" style={{ width: "100%", borderRadius: 8 }} />
           <div className="footnote">B-self and B-oracle retrieve identical cases; only what was stored differs.</div>
         </div>
+      </div>
+      <div className="panel" style={{ marginTop: 20 }}>
+        <h3>Want to see this traced through one real alert, script by script?</h3>
+        <p className="section-desc" style={{ marginTop: 6 }}>
+          The two diagrams above show the architecture in the abstract. The next section animates a single real
+          alert moving through every script in it — the detector, the triage prompt builder, the memory layer,
+          the live model call, both arms side by side — showing the actual real data at every step.
+        </p>
+        <button
+          className="chip on"
+          onClick={() => onNavigate?.("journey")}
+          style={{ marginTop: 4, borderRadius: 7, fontSize: 13, padding: "8px 16px" }}
+        >
+          See one alert's full journey →
+        </button>
       </div>
     </section>
   );

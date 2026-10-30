@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemSOC — One Alert's Journey</title>
+<style>
+  :root{
+    --bg:#fbf0e4; --panel:#fffaf2; --ink:#2c241c; --muted:#8a7a68;
+    --accent:#e8795a; --accent2:#c9603f; --good:#5c7a3f; --warn:#b5791f; --bad:#b3473c;
+    --line:#e3cfb8; --armA:#6a7ba8; --armB:#c9603f; --mem:#8a6fb0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:'IBM Plex Sans', Arial, sans-serif;}
+  .mono{font-family:'IBM Plex Mono', 'Consolas', monospace;}
+  header{padding:18px 24px 12px; position:sticky; top:0; z-index:50; background:linear-gradient(to bottom, var(--bg) 85%, transparent);}
+  h1{font-size:19px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:12.5px; max-width:900px; line-height:1.5;}
+  .controls{display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;}
+  button.ctl{background:var(--panel); border:1px solid var(--line); color:var(--ink); padding:6px 13px; border-radius:7px; cursor:pointer; font-size:12.5px; font-family:inherit;}
+  button.ctl:hover{border-color:var(--accent); color:var(--accent2);}
+  button.ctl.primary{background:var(--accent); color:#fff; border-color:var(--accent2);}
+  button.ctl.primary:hover{background:var(--accent2);}
+  .speed{font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:6px;}
+  .progress-track{height:4px; background:var(--line); border-radius:2px; margin-top:9px; overflow:hidden;}
+  .progress-fill{height:100%; background:var(--accent); width:0%; transition:width .25s linear;}
+  main{padding:8px 24px 60px; max-width:1560px; margin:0 auto;}
+
+  .rail-wrap{position:relative; margin-top:14px; border:1px solid var(--line); border-radius:14px; background:#fff8ef; padding:10px; overflow-x:auto;}
+  svg.rail{display:block; min-width:1500px;}
+  .rail-line{stroke:var(--line); stroke-width:2.6; fill:none;}
+  .rail-line.armA{stroke:var(--armA);}
+  .rail-line.armB{stroke:var(--armB);}
+  text.node-label{font-size:11px; font-family:'IBM Plex Mono', monospace; fill:var(--ink); font-weight:600;}
+  text.node-sub{font-size:9px; fill:var(--muted);}
+  text.row-tag{font-size:12px; font-weight:700; letter-spacing:.04em;}
+  text.row-tag.trunk{fill:var(--muted);}
+
+  .node-box{fill:var(--panel); stroke:var(--line); stroke-width:1.6;}
+  .node-box.active{stroke:var(--accent); stroke-width:2.8;}
+  .node-box.done{stroke:var(--good);}
+  .node-icon{fill:none; stroke:var(--muted); stroke-width:1.6;}
+  .node-icon.active{stroke:var(--accent);}
+
+  .token{fill:var(--accent); stroke:#fff; stroke-width:2; filter:drop-shadow(0 1px 3px rgba(0,0,0,.35));}
+  .token.armA{fill:var(--armA);}
+  .token.armB{fill:var(--armB);}
+
+  .panel-stage{margin-top:26px; min-height:360px;}
+  .detail-card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 22px; box-shadow:0 2px 10px rgba(80,50,20,.06); animation:fadein .35s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+  .detail-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;}
+  .detail-head h2{font-size:15.5px; margin:0;}
+  .detail-script{font-size:10.5px; color:var(--accent2); background:#fbe7dc; border:1px solid #f0c6ae; padding:2px 8px; border-radius:6px;}
+  .detail-desc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5; max-width:920px;}
+  .detail-body{margin-top:12px; display:grid; gap:11px;}
+  pre.data{background:#2c241c; color:#f3e9da; padding:11px 13px; border-radius:9px; font-size:11px; line-height:1.55; overflow-x:auto; white-space:pre-wrap; font-family:'IBM Plex Mono', monospace; margin:0;}
+  pre.data .hl{color:#f0b26b; font-weight:600;}
+  pre.data .dim{color:#9c8c78;}
+  .kv-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px;}
+  .kv{background:#fff6ec; border:1px solid var(--line); border-radius:8px; padding:7px 10px;}
+  .kv .k{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;}
+  .kv .v{font-size:13px; margin-top:2px; font-weight:600;}
+  .precedent-row{border:1px solid var(--line); border-radius:9px; padding:9px 11px; background:#fff; display:grid; gap:4px;}
+  .precedent-row .top{display:flex; justify-content:space-between; font-size:11.5px;}
+  .sim-bar{height:5px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:3px;}
+  .sim-fill{height:100%; background:var(--mem);}
+  .badge{display:inline-block; padding:2px 8px; border-radius:5px; font-size:10.5px; font-weight:600;}
+  .badge.tp{background:#e3ecd9; color:var(--good);}
+  .badge.fuzzers{background:#f3e5d0; color:var(--warn);}
+  .caveat{background:#fbe9db; border:1px solid #efc89f; border-radius:9px; padding:9px 13px; font-size:11.5px; color:#8a5a28; line-height:1.5;}
+  .caveat.strong{background:#f7ded9; border-color:#e3a898; color:#8a2f1f;}
+  .verdict-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .verdict-card{border-radius:10px; padding:11px 13px; border:1.6px solid var(--line); background:#fff;}
+  .verdict-card h4{margin:0 0 6px; font-size:12px; color:var(--muted); font-weight:600;}
+  .verdict-card .vc-row{display:flex; justify-content:space-between; font-size:12.5px; margin-top:4px;}
+  .verdict-card .vc-rationale{font-size:11px; color:var(--muted); margin-top:7px; line-height:1.4;}
+  .final-compare{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:4px;}
+  .final-col h3{font-size:12.5px; margin:0 0 9px; display:flex; align-items:center; gap:8px;}
+  .dot{width:9px; height:9px; border-radius:50%; display:inline-block;}
+  .dot.armA{background:var(--armA);}
+  .dot.armB{background:var(--armB);}
+  .legend{display:flex; gap:18px; margin-top:12px; font-size:11px; color:var(--muted); flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .legend .sw{width:14px; height:3px; border-radius:2px; display:inline-block;}
+  .step-dots{display:flex; gap:5px; margin-top:14px; flex-wrap:wrap; max-width:900px;}
+  .step-dot{width:8px; height:8px; border-radius:50%; background:var(--line); cursor:pointer; transition:background .2s, transform .2s;}
+  .step-dot.active{background:var(--accent); transform:scale(1.3);}
+  .step-dot.past{background:var(--armB);}
+  .ground-truth-flag{display:inline-flex; align-items:center; gap:6px; background:#f7ded9; color:#8a2f1f; border:1px solid #e3a898; padding:4px 10px; border-radius:7px; font-size:12px; font-weight:600;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>One alert's full journey through MemSOC</h1>
+  <div class="sub">
+    A single real alert, <span class="mono">C1424261572473-1036-15998</span>, traced through <strong>every
+    script in the pipeline</strong> — the detection pipeline, the triage prompt builder, the memory layer, and
+    the live model call — for both experimental arms. Every number and every line of text below is this alert's
+    actual recorded data. Scroll the rail horizontally to see the whole path.
+  </div>
+  <div class="controls">
+    <button class="ctl primary" id="playBtn">▶ Play journey</button>
+    <button class="ctl" id="prevBtn">◂ Back</button>
+    <button class="ctl" id="nextBtn">Forward ▸</button>
+    <button class="ctl" id="resetBtn">⟲ Restart</button>
+    <span class="speed">Speed:
+      <select id="speedSel" class="mono" style="font-size:12px;">
+        <option value="2600">Slow</option>
+        <option value="1600" selected>Normal</option>
+        <option value="900">Fast</option>
+      </select>
+    </span>
+  </div>
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="step-dots" id="stepDots"></div>
+</header>
+
+<main>
+  <div class="rail-wrap">
+    <svg class="rail" viewBox="0 0 2760 770" role="img"
+      aria-label="Pipeline: raw flow through the detector and SHAP, joined, then split into Arm A (straight to prompt and live model call) and Arm B-self (case text, embedding, ChromaDB retrieval, prompt with precedents, live model call, write-back), both graded at the end against ground truth">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+        </marker>
+        <marker id="arrowA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--armA)"/>
+        </marker>
+        <marker id="arrowB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--armB)"/>
+        </marker>
+      </defs>
+
+      <!-- row tags -->
+      <text class="row-tag trunk" x="20" y="24">SHARED — same for every arm</text>
+      <text class="row-tag" x="1150" y="206" fill="var(--armA)">ARM A — memory off</text>
+      <text class="row-tag" x="1150" y="396" fill="var(--armB)">ARM B-SELF — with memory</text>
+      <text class="row-tag" x="2170" y="588" fill="var(--ink)">GRADED — both arms, first time truth is read</text>
+
+      <!-- ===== trunk connectors (row y-center = 76) ===== -->
+      <path class="rail-line" d="M180,76 L250,76" marker-end="url(#arrow)"/>
+      <path class="rail-line" d="M410,76 L480,76" marker-end="url(#arrow)"/>
+      <path class="rail-line" d="M640,76 L710,76" marker-end="url(#arrow)"/>
+      <path class="rail-line" d="M870,76 L940,76" marker-end="url(#arrow)"/>
+
+      <!-- split from join (x940-1100,y40-112) down to Arm A row (y230-302) and Arm B row (y420-492) -->
+      <path class="rail-line armA" d="M1020,112 L1020,160 L1230,160 L1230,230" marker-end="url(#arrowA)"/>
+      <path class="rail-line armB" d="M1020,112 L1020,350 L1230,350 L1230,420" marker-end="url(#arrowB)"/>
+
+      <!-- Arm A internal connectors (row y-center=266) -->
+      <path class="rail-line armA" d="M1390,266 L1460,266" marker-end="url(#arrowA)"/>
+      <path class="rail-line armA" d="M1620,266 L1690,266" marker-end="url(#arrowA)"/>
+
+      <!-- Arm B internal connectors (row y-center=456) -->
+      <path class="rail-line armB" d="M1390,456 L1460,456" marker-end="url(#arrowB)"/>
+      <path class="rail-line armB" d="M1620,456 L1690,456" marker-end="url(#arrowB)"/>
+      <path class="rail-line armB" d="M1850,456 L1920,456" marker-end="url(#arrowB)"/>
+      <path class="rail-line armB" d="M2080,456 L2150,456" marker-end="url(#arrowB)"/>
+      <path class="rail-line armB" d="M2310,456 L2380,456" marker-end="url(#arrowB)"/>
+
+      <!-- convergence to final (final box x2170-2370, y590-662) -->
+      <path class="rail-line armA" d="M1770,302 L1770,560 L2230,560 L2230,590" marker-end="url(#arrowA)"/>
+      <path class="rail-line armB" d="M2540,492 L2540,560 L2310,560 L2310,590" marker-end="url(#arrowB)"/>
+
+      <!-- ============ trunk nodes ============ -->
+      <g id="node-flow" transform="translate(20,40)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(12,14)">
+          <path d="M0,4 Q14,-4 28,4 L28,22 Q14,30 0,22 Z"/><path d="M0,4 Q14,12 28,4" fill="none"/>
+        </g>
+        <text class="node-label" x="46" y="24">generated_logs</text>
+        <text class="node-label" x="46" y="36">.jsonl</text>
+        <text class="node-sub" x="12" y="56">raw NetFlow v3 record</text>
+      </g>
+
+      <g id="node-preprocess" transform="translate(250,40)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,14)">
+          <path d="M0,20 L8,4 L16,14 L24,0" />
+        </g>
+        <text class="node-label" x="44" y="22">preprocessor.py</text>
+        <text class="node-label" x="44" y="34">+ validator.py</text>
+        <text class="node-sub" x="12" y="52">schema check, feature</text>
+        <text class="node-sub" x="12" y="62">order/scale to match training</text>
+      </g>
+
+      <g id="node-detector" transform="translate(480,40)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,14)">
+          <rect x="0" y="0" width="20" height="20" rx="3"/><circle cx="10" cy="10" r="4"/>
+        </g>
+        <text class="node-label" x="42" y="22">inference_</text>
+        <text class="node-label" x="42" y="34">pipeline.py</text>
+        <text class="node-sub" x="12" y="50">binary LightGBM (attack?)</text>
+        <text class="node-sub" x="12" y="62">multiclass LightGBM (family)</text>
+      </g>
+
+      <g id="node-shap" transform="translate(710,40)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,14)">
+          <path d="M11,0 L22,20 L0,20 Z"/><line x1="11" y1="8" x2="11" y2="15"/>
+        </g>
+        <text class="node-label" x="42" y="22">shap_explainer.py</text>
+        <text class="node-label" x="42" y="34">alert_generator.py</text>
+        <text class="node-sub" x="12" y="50">explains the guess,</text>
+        <text class="node-sub" x="12" y="62">writes live_results.jsonl</text>
+      </g>
+
+      <g id="node-join" transform="translate(940,40)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,16)">
+          <circle cx="4" cy="4" r="4"/><circle cx="24" cy="4" r="4"/><path d="M4,8 L4,18 L24,18 L24,8"/>
+        </g>
+        <text class="node-label" x="42" y="22">triage_runner.py</text>
+        <text class="node-sub" x="12" y="40">joins alert + flow on uid,</text>
+        <text class="node-sub" x="12" y="50">build_alert_view() whitelist</text>
+        <text class="node-sub" x="12" y="63" fill="var(--accent2)" style="font-weight:600;">split point ↓</text>
+      </g>
+
+      <!-- ============ Arm A nodes (row y=230-302) ============ -->
+      <g id="node-promptA" transform="translate(1230,230)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,12)">
+          <rect x="0" y="0" width="20" height="24" rx="2"/><line x1="4" y1="6" x2="16" y2="6"/><line x1="4" y1="11" x2="16" y2="11"/><line x1="4" y1="16" x2="12" y2="16"/>
+        </g>
+        <text class="node-label" x="42" y="22">triage_prompt.py</text>
+        <text class="node-sub" x="12" y="40">render(), precedents=()</text>
+        <text class="node-sub" x="12" y="52">3,581 chars</text>
+      </g>
+      <g id="node-llmA" transform="translate(1460,230)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,12)">
+          <path d="M0,0 L24,0 L24,18 L8,18 L4,24 L4,18 L0,18 Z"/>
+        </g>
+        <text class="node-label" x="42" y="22">llm_client.py</text>
+        <text class="node-sub" x="12" y="40">live call: Gemini (Gemma)</text>
+        <text class="node-sub" x="12" y="50">or Groq (gpt-oss)</text>
+        <text class="node-sub" x="12" y="62">real API quota spent</text>
+      </g>
+      <g id="node-parseA" transform="translate(1690,230)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(16,14)">
+          <path d="M0,16 L8,4 L16,10 L24,0" />
+        </g>
+        <text class="node-label" x="42" y="22">triage_prompt.py</text>
+        <text class="node-sub" x="12" y="40">parse_llm_response()</text>
+        <text class="node-sub" x="12" y="52">closed-vocab validation,</text>
+        <text class="node-sub" x="12" y="62">no repair, fails loudly</text>
+      </g>
+
+      <!-- ============ Arm B nodes (row y=420-492) ============ -->
+      <g id="node-casetext" transform="translate(1230,420)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,12)">
+          <rect x="0" y="0" width="20" height="24" rx="2"/><line x1="4" y1="7" x2="16" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="10" y2="17"/>
+        </g>
+        <text class="node-label" x="42" y="22">case_text.py</text>
+        <text class="node-sub" x="12" y="40">embedding text, 353 chars</text>
+        <text class="node-sub" x="12" y="52">no detector label/IP/time</text>
+      </g>
+      <g id="node-embed" transform="translate(1460,420)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(16,14)">
+          <circle cx="0" cy="22" r="5"/><circle cx="26" cy="22" r="5"/><circle cx="13" cy="0" r="5"/>
+          <line x1="0" y1="17" x2="10" y2="4"/><line x1="26" y1="17" x2="16" y2="4"/>
+        </g>
+        <text class="node-label" x="42" y="22">all-MiniLM-L6-v2</text>
+        <text class="node-sub" x="12" y="40">sentence-transformers</text>
+        <text class="node-sub" x="12" y="52">case text → vector</text>
+      </g>
+      <g id="node-chroma" transform="translate(1690,420)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(66,10)">
+          <ellipse cx="12" cy="4" rx="12" ry="4"/><path d="M0,4 L0,26 Q12,32 24,26 L24,4"/><path d="M0,14 Q12,20 24,14" fill="none"/>
+        </g>
+        <text class="node-label" x="30" y="52" text-anchor="middle">ChromaDB</text>
+        <text class="node-sub" x="30" y="62" text-anchor="middle">bself-gemma4-26b-p3</text>
+      </g>
+      <g id="node-precedents" transform="translate(1920,420)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,12)">
+          <rect x="0" y="0" width="16" height="20" rx="2"/><rect x="7" y="4" width="16" height="20" rx="2" fill="var(--panel)"/>
+        </g>
+        <text class="node-label" x="42" y="22">top-3 retrieval</text>
+        <text class="node-sub" x="12" y="40">store.py query path</text>
+        <text class="node-sub" x="12" y="52">cosine similarity rank</text>
+      </g>
+      <g id="node-promptB" transform="translate(2150,420)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,12)">
+          <rect x="0" y="0" width="20" height="24" rx="2"/><line x1="4" y1="6" x2="16" y2="6"/><line x1="4" y1="11" x2="16" y2="11"/><line x1="4" y1="16" x2="12" y2="16"/>
+        </g>
+        <text class="node-label" x="42" y="22">triage_prompt.py</text>
+        <text class="node-sub" x="12" y="40">render(), +3 precedents</text>
+        <text class="node-sub" x="12" y="52">6,196 chars</text>
+      </g>
+      <g id="node-llmB" transform="translate(2380,420)">
+        <rect class="node-box" x="0" y="0" width="160" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(14,12)">
+          <path d="M0,0 L24,0 L24,18 L8,18 L4,24 L4,18 L0,18 Z"/>
+        </g>
+        <text class="node-label" x="42" y="22">llm_client.py</text>
+        <text class="node-sub" x="12" y="40">+ parse_llm_response()</text>
+        <text class="node-sub" x="12" y="52">same live API, same</text>
+        <text class="node-sub" x="12" y="62">closed-vocab validation</text>
+      </g>
+
+      <!-- write-back node, stacked below llmB since row is full -->
+      <path class="rail-line armB" d="M2460,492 L2460,560 L2540,560" marker-end="url(#arrowB)" style="display:none"/>
+      <g id="node-writeback" transform="translate(2540,230)">
+        <rect class="node-box" x="0" y="0" width="200" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(66,10)">
+          <ellipse cx="12" cy="4" rx="12" ry="4"/><path d="M0,4 L0,26 Q12,32 24,26 L24,4"/>
+        </g>
+        <text class="node-label" x="30" y="52">memory/store.py</text>
+        <text class="node-sub" x="12" y="64">write path — new case stored</text>
+      </g>
+      <path class="rail-line armB" d="M2460,492 C 2540,492 2540,360 2560,302" marker-end="url(#arrowB)"/>
+
+      <!-- ============ final node ============ -->
+      <g id="node-final" transform="translate(2170,590)">
+        <rect class="node-box" x="0" y="0" width="200" height="72" rx="10"/>
+        <g class="node-icon" transform="translate(16,18)">
+          <path d="M0,16 L8,4 L16,10 L24,0" />
+        </g>
+        <text class="node-label" x="46" y="24">score_verdicts.py</text>
+        <text class="node-sub" x="12" y="42">vs artifacts/ground_truth.csv</text>
+        <text class="node-sub" x="12" y="54">only place truth is read</text>
+      </g>
+
+      <circle id="token" class="token" r="9" cx="100" cy="76"/>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--line)"></span>shared / trunk path</span>
+    <span><span class="sw" style="background:var(--armA)"></span>Arm A — memory off</span>
+    <span><span class="sw" style="background:var(--armB)"></span>Arm B-self — with memory</span>
+  </div>
+
+  <div class="panel-stage" id="panelStage"></div>
+</main>
+
+<script>
+const UID = "C1424261572473-1036-15998";
+const TRUTH = "Exploits";
+
+const steps = [
+  { id:"flow", node:"node-flow", pos:[100,76], arm:null,
+    title:"Step 0 — the raw flow arrives", script:"artifacts/generated_logs.jsonl (raw NetFlow v3 stream)",
+    desc:"This is the literal row this alert is built from — every number real, un-rounded sensor data for one TCP connection.",
+    body:`<div class="kv-grid">
+      <div class="kv"><div class="k">uid</div><div class="v mono">${UID}</div></div>
+      <div class="kv"><div class="k">protocol</div><div class="v">TCP → port 1723</div></div>
+      <div class="kv"><div class="k">packets</div><div class="v">10 in / 6 out</div></div>
+      <div class="kv"><div class="k">bytes</div><div class="v">2,504 / 256</div></div>
+      <div class="kv"><div class="k">duration</div><div class="v">1,243 ms</div></div>
+      <div class="kv"><div class="k">TTL</div><div class="v">min 254, max 255</div></div>
+      <div class="kv"><div class="k">TCP flags</div><div class="v">FIN, SYN, ACK (19)</div></div>
+      <div class="kv"><div class="k">retransmits</div><div class="v">2 in / 0 out pkts</div></div>
+    </div>
+    <div class="caveat">Source/destination IP (175.45.176.1 → 149.171.126.15) exists in this raw record but is never
+    carried past this point — on this dataset source IP alone predicts the attack label with 100% accuracy, so
+    passing it forward would make every later step an oracle rather than a measurement of triage quality.</div>`
+  },
+  { id:"preprocess", node:"node-preprocess", pos:[330,76], arm:null,
+    title:"Step 1 — validate and prepare the features", script:"src/memsoc/detection/preprocessing/preprocessor.py + dataset/validator.py",
+    desc:"Before either model runs, the raw record is validated against the expected NetFlow v3 schema and its 44 feature columns are ordered and scaled to exactly match what the binary and multiclass models were trained on. A malformed or incomplete record is rejected here, before it can reach a model.",
+    body:`<div class="kv-grid">
+      <div class="kv"><div class="k">schema check</div><div class="v">NetFlow v3, 44 columns</div></div>
+      <div class="kv"><div class="k">result</div><div class="v" style="color:var(--good)">passed — record accepted</div></div>
+    </div>
+    <div class="caveat">The 44 columns are the exact <span class="mono">FLOW_FEATURES</span> whitelist from
+    triage_prompt.py: volume/byte counts, duration, throughput, packet-size buckets, retransmission counts, TTL,
+    TCP flags and window sizes, inter-arrival timing, and protocol-specific fields (L7 protocol, DNS, ICMP, FTP).
+    Nothing outside that fixed list — and specifically no address or timestamp field — is ever ordered or scaled
+    for a model to see.</div>`
+  },
+  { id:"detector", node:"node-detector", pos:[560,76], arm:null,
+    title:"Step 2 — the ML detector classifies it", script:"src/memsoc/detection/inference/inference_pipeline.py",
+    desc:"Two trained LightGBM models run in sequence: binary attack/benign first, then multiclass family — only if the binary stage says attack. Neither has ever seen this alert's true label.",
+    body:`<div class="kv-grid">
+      <div class="kv"><div class="k">binary score</div><div class="v">1.00 — attack</div></div>
+      <div class="kv"><div class="k">multiclass guess</div><div class="v">Fuzzers</div></div>
+      <div class="kv"><div class="k">multiclass confidence</div><div class="v">0.7561</div></div>
+    </div>
+    <div class="caveat strong">This guess is wrong. The real ground-truth family is <strong>${TRUTH}</strong> — but
+    ground truth is never read by any triage code; it only exists in score_verdicts.py, at the very end, for
+    grading. Watch this "Fuzzers" guess travel forward.</div>
+    <div class="caveat">The multiclass model computes a full probability across all 8 families
+    (binary_model.predict_proba / multiclass_model.predict_proba in inference_pipeline.py) — but only the winning
+    class's own probability is kept in live_results.jsonl. The other 7 numbers, including whatever probability it
+    gave "Exploits", were never persisted, so this journey can't honestly show "Exploits was a close second" —
+    only that Fuzzers won with 0.7561 confidence.</div>`
+  },
+  { id:"shap", node:"node-shap", pos:[790,76], arm:null,
+    title:"Step 3 — SHAP explains the guess, the alert is packaged", script:"detection/explain/shap_explainer.py + detection/alerts/alert_generator.py → artifacts/model_outputs/live_results.jsonl",
+    desc:"SHAP attributes the multiclass guess to specific feature values — which numbers from Step 0 pushed the model toward 'Fuzzers'. This record is what gets written as one alert.",
+    body:`<pre class="data">{
+  "uid": "${UID}", "status": "attack", "binary_confidence": 1.0,
+  "multiclass": {"prediction": "<span class="hl">Fuzzers</span>", "confidence": 0.7561},
+  "alert": {"shap_explanation": [
+    {"feature": "L4_DST_PORT",            "shap_value": <span class="hl">+1.9090</span>},
+    {"feature": "MIN_TTL",                 "shap_value": +0.5973},
+    {"feature": "DNS_QUERY_TYPE",          "shap_value": +0.4592},
+    {"feature": "RETRANSMITTED_OUT_BYTES", "shap_value": +0.4272},
+    {"feature": "L4_SRC_PORT",             "shap_value": +0.2378},
+    {"feature": "LONGEST_FLOW_PKT",        "shap_value": +0.1436},
+    {"feature": "OUT_BYTES",               "shap_value": +0.1314},
+    {"feature": "IN_BYTES",                "shap_value": +0.1214},
+    <span class="dim">... 2 more computed by SHAP (ICMP_TYPE -0.1151, TCP_FLAGS -0.1097),
+        dropped here: SHAP_IN_PROMPT = 8 keeps only the top 8 by |contribution| ...</span>
+  ]}
+}</pre>
+    <div class="caveat">These exact 8 lines, in this exact order, are the full "Model explanation" block the LLM
+    actually receives in Step 5A/9B below — nothing is summarized further between here and the prompt.</div>`
+  },
+  { id:"join", node:"node-join", pos:[1020,76], arm:null,
+    title:"Step 4 — alert and flow are joined into one view", script:"src/memsoc/triage/triage_runner.py → triage_prompt.build_alert_view()",
+    desc:"triage_runner.py joins this alert to its matching flow row on uid, then build_alert_view() copies only whitelisted fields forward — the one function standing between the raw data and the prompt.",
+    body:`<div class="kv-grid">
+      <div class="kv"><div class="k">kept (whitelisted)</div><div class="v">uid, detector label+score, ports, protocol, SHAP, the 44 flow features</div></div>
+      <div class="kv"><div class="k">dropped (never copied)</div><div class="v" style="color:var(--bad)">src/dst IP, capture timestamp</div></div>
+    </div>
+    <div class="caveat">build_alert_view() copies fields <em>by explicit whitelist</em>, not by filtering out what's
+    unwanted — so an address or timestamp can't reach the prompt by a later edit missing one exclusion rule. This
+    is the one function standing between the raw data and every prompt built downstream.</div>
+    <div class="caveat">From here the pipeline splits. <strong>Arm A</strong> (top) sends this view straight to a
+    prompt, no memory involved. <strong>Arm B-self</strong> (bottom) first embeds it and searches memory before
+    building its prompt. Everything upstream of this point is <em>identical</em> for both arms.</div>`
+  },
+
+  { id:"promptA", node:"node-promptA", pos:[1310,266], arm:"A",
+    title:"Step 5A — the Arm A prompt is built", script:"src/memsoc/triage/triage_prompt.py — render(), precedents=()",
+    desc:"The exact, real prompt sent to the model with memory switched off. 3,581 characters.",
+    body:`<pre class="data" style="max-height:420px; overflow-y:auto;">You are a SOC analyst triaging one alert raised by an automated network-intrusion detection model. Decide whether the alert is a genuine detection or a false alarm, and name the attack family if there is one.
+
+The detector is an ML classifier. Its predicted family and confidence are its own output, reported below alongside the flow's measurements. Form your own assessment from the evidence; your conclusion may agree or disagree with it.
+
+Base the decision on the measurements. Use "inconclusive" and "unknown" where the evidence genuinely does not support a call, rather than as a default.
+
+ALERT ${UID}
+
+<span class="hl">Detector hypothesis : Fuzzers (multiclass confidence 0.7561)</span>
+Attack/benign score : 1.0
+
+Connection
+  Destination port  : 1723 (1723)
+  Source port       : 1036
+  Transport         : TCP
+
+Flow measurements
+  Volume        : 10 in / 6 out packets, 2,504 / 256 bytes
+  Duration      : 1,243 ms total, 1,190 in / 1,111 out
+  Throughput    : 16,102 src-&gt;dst, 1,646 dst-&gt;src
+  Bytes/sec     : 0.2 src-&gt;dst, 2.0 dst-&gt;src
+  Packet size   : shortest 40, longest 1,076, IP len 40-1,076
+  Size buckets  : &lt;=128B 14, 128-256B 0, 256-512B 0, 512-1024B 0, 1024-1514B 2
+  Retransmitted : 2 in / 0 out packets, 1,124 / 0 bytes
+  TTL           : min 254, max 255
+  TCP flags     : combined FIN,SYN,ACK (19), client FIN,SYN,ACK (19), server FIN,SYN,ACK (19)
+  TCP window    : max in 16,383, max out 16,383
+  IAT src-&gt;dst  : min 0, max 633, avg 132, stddev 204
+  IAT dst-&gt;src  : min 0, max 995, avg 222, stddev 389
+  L7 protocol   : 0.0
+  DNS / ICMP    : query type 0, TTL answer 0, ICMP type 25,600, ICMP IPv4 type 100
+  FTP return    : 0
+
+Model explanation (SHAP -- which features drove the prediction, with their values)
+  L4_DST_PORT                  =            n/a   contribution +1.9090
+  MIN_TTL                      =          254.0   contribution +0.5973
+  DNS_QUERY_TYPE               =            0.0   contribution +0.4592
+  RETRANSMITTED_OUT_BYTES      =            0.0   contribution +0.4272
+  L4_SRC_PORT                  =            n/a   contribution +0.2378
+  LONGEST_FLOW_PKT             =        1,076.0   contribution +0.1436
+  OUT_BYTES                    =          256.0   contribution +0.1314
+  IN_BYTES                     =        2,504.0   contribution +0.1214
+
+A positive contribution pushed the model toward its predicted family; a negative one pushed against it. These indicate which fields the model attended to; weigh the measurements themselves as well.
+
+TASK
+Respond with ONLY a single valid JSON object -- no markdown code fences, no prose before or after it -- with exactly these keys:
+
+{
+  "verdict": "&lt;one of: true_positive | false_positive | inconclusive. true_positive = this is genuinely malicious traffic and the alert was warranted. false_positive = this is benign traffic and the alert was a false alarm. inconclusive = the measurements genuinely conflict.&gt;",
+  "attack_category": "&lt;the attack family YOU conclude, one of: Analysis | Backdoor | DoS | Exploits | Fuzzers | Generic | Reconnaissance | Shellcode | none | unknown. Use 'none' if you judged the flow benign. Use 'unknown' only if it is malicious but the family truly cannot be determined. This need not match the detector's hypothesis.&gt;",
+  "confidence": &lt;a number between 0.0 and 1.0 -- your own confidence in this verdict, not the detector's&gt;,
+  "rationale_summary": "&lt;at most 400 characters. State the measurements that decided it: the service and port, the specific flow numbers you weighted, and -- if you departed from the detector's hypothesis -- why.&gt;"
+}</pre>
+    <div class="caveat">3,581 characters, byte-for-byte what triage_prompt.render() produces for this alert with
+    precedents=(). No "Relevant past cases" section exists at all — not even an empty one. render() emits total
+    silence in that case, so this prompt is provably identical to what Arm B's prompt looked like before any
+    memory existed for it to retrieve.</div>`
+  },
+  { id:"llmA", node:"node-llmA", pos:[1540,266], arm:"A",
+    title:"Step 6A — the live model call", script:"src/memsoc/triage/llm_client.py → Gemini (Gemma) / Groq (gpt-oss)",
+    desc:"The prompt above is sent, as-is, to each model's real API — live quota spent, not a replay.",
+    body:`<div class="verdict-grid">
+      <div class="verdict-card"><h4>GEMMA 4 26B — Arm A</h4>
+        <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.80</strong></div>
+        <div class="vc-rationale">"...highly irregular TCP flags (FIN, SYN, ACK) and high TTL values
+        (254–255)... strongly suggest a fuzzer or probe attempting to exploit the PPTP service implementation."</div>
+      </div>
+      <div class="verdict-card"><h4>GPT-OSS-20B — Arm A</h4>
+        <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.80</strong></div>
+        <div class="vc-rationale">"...tiny 10/6 packet flow, 2 large 1,076-byte packets, and an abnormal
+        SYN+FIN+ACK flag combo strongly suggest a fuzzing attempt."</div>
+      </div>
+    </div>`
+  },
+  { id:"parseA", node:"node-parseA", pos:[1770,266], arm:"A",
+    title:"Step 7A — the response is parsed and validated", script:"src/memsoc/triage/triage_prompt.py — parse_llm_response()",
+    desc:"Every field is checked against its closed vocabulary. Nothing here repairs or guesses — a response that fails any check raises instead of being silently fixed.",
+    body:`<pre class="data">{
+  "verdict": "true_positive",
+  "attack_category": "Fuzzers",
+  "confidence": 0.8,
+  "rationale_summary": "The connection targets port 1723 (PPTP) and exhibits
+  highly irregular TCP flags (FIN, SYN, ACK) and high TTL values (254-255).
+  The small packet count and short duration, combined with these anomalies,
+  strongly suggest a fuzzer or probe attempting to exploit the PPTP service
+  implementation."
+}  <span class="dim">(Gemma's object — reconstructed from the stored parsed fields in the exact
+                   4-key schema the model was required to return; the raw API
+                   response text itself isn't persisted, only its parsed result)</span></pre>
+    <div class="kv-grid" style="margin-top:4px;">
+      <div class="kv"><div class="k">verdict in {tp,fp,inconclusive}</div><div class="v" style="color:var(--good)">✓ valid</div></div>
+      <div class="kv"><div class="k">category in closed set</div><div class="v" style="color:var(--good)">✓ valid</div></div>
+      <div class="kv"><div class="k">confidence 0.0–1.0</div><div class="v" style="color:var(--good)">✓ valid</div></div>
+    </div>
+    <div class="caveat">This verdict now goes straight to scoring — Arm A never writes to memory, so there is no
+    further step for this arm until grading at the very end.</div>`
+  },
+
+  { id:"casetext", node:"node-casetext", pos:[1310,456], arm:"B",
+    title:"Step 5B — embedding text is built (memory arm only)", script:"src/memsoc/memory/case_text.py — render()",
+    desc:"A narrower, fixed-order text — no detector label, no score, no IP, no timestamp — built purely to decide “similar” for retrieval.",
+    body:`<pre class="data">TCP to port 1723 (unnamed), L7 protocol 0.0
+Volume: 10 in / 6 out packets, 2504 / 256 bytes
+Duration: 1243 ms
+Throughput: 16102 src to dst, 1646 dst to src
+Packet size: shortest 40, longest 1076
+Retransmitted: 2 in / 0 out packets
+TTL: min 254, max 255
+TCP flags: client FIN SYN ACK, server FIN SYN ACK
+Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE</pre>
+    <div class="caveat">353 characters. Deliberately excludes the detector's "Fuzzers" guess — case_text.py's own
+    docstring notes that including it once raised the overall match rate but collapsed it specifically on alerts
+    the detector got wrong, which is exactly this alert.</div>`
+  },
+  { id:"embed", node:"node-embed", pos:[1540,456], arm:"B",
+    title:"Step 6B — the embedding model", script:"sentence-transformers/all-MiniLM-L6-v2",
+    desc:"The 353-character case text is converted into a vector embedding — the same model used to embed every case already stored in this run's memory.",
+    body:`<div class="kv-grid">
+      <div class="kv"><div class="k">model</div><div class="v">all-MiniLM-L6-v2</div></div>
+      <div class="kv"><div class="k">embeds</div><div class="v">case text only</div></div>
+      <div class="kv"><div class="k">never sees</div><div class="v">detector label, IP, time</div></div>
+    </div>`
+  },
+  { id:"chroma", node:"node-chroma", pos:[1770,456], arm:"B",
+    title:"Step 7B — vector search against this run's real memory", script:"memsoc/memory/store.py — query path, ChromaDB",
+    desc:"The embedding is searched against every case this model stored so far in this 165-alert self-memory run.",
+    body:`<div class="kv-grid">
+      <div class="kv"><div class="k">store</div><div class="v">bself-gemma4-26b-p3</div></div>
+      <div class="kv"><div class="k">cases searched</div><div class="v">160 (this alert is #161)</div></div>
+    </div>`
+  },
+  { id:"precedents", node:"node-precedents", pos:[2000,456], arm:"B",
+    title:"Step 8B — top-3 precedents returned", script:"memsoc/memory/store.py — retrieve(), top_k=3",
+    desc:"Most similar first, by cosine similarity.",
+    body:`<div class="precedent-row"><div class="top"><strong>#1 — case 000095</strong><span>99.85% similar</span></div>
+      <div class="sim-bar"><div class="sim-fill" style="width:99.85%"></div></div>
+      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Fuzzers</span> conf. 0.95</div></div>
+    <div class="precedent-row" style="margin-top:7px;"><div class="top"><strong>#2 — case 000029</strong><span>99.59% similar</span></div>
+      <div class="sim-bar"><div class="sim-fill" style="width:99.59%"></div></div>
+      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Fuzzers</span> conf. 0.95</div></div>
+    <div class="precedent-row" style="margin-top:7px;"><div class="top"><strong>#3 — case 000154</strong><span>99.36% similar</span></div>
+      <div class="sim-bar"><div class="sim-fill" style="width:99.36%"></div></div>
+      <div style="font-size:11.5px;">Stored verdict: <span class="badge tp">true_positive</span> <span class="badge fuzzers">Fuzzers</span> conf. 0.95</div></div>
+    <div class="caveat strong" style="margin-top:9px;">All three retrieved precedents are themselves cases where the
+    detector guessed Fuzzers and the model, in self-memory mode, agreed and wrote that agreement back as a stored
+    case. This alert is about to retrieve the echo of earlier, equally confident, equally wrong guesses.</div>`
+  },
+  { id:"promptB", node:"node-promptB", pos:[2230,456], arm:"B",
+    title:"Step 9B — the Arm B-self prompt, now with precedents", script:"triage_prompt.py — render(), +3 precedents",
+    desc:"Identical to the Arm A prompt, with one section inserted: the 3 retrieved cases above. 6,196 characters, +2,615 over Arm A.",
+    body:`<pre class="data" style="max-height:460px; overflow-y:auto;"><span class="dim">...(identical detector hypothesis, connection, flow measurements and SHAP block as Arm A above — same 3,581 characters, unchanged)...</span>
+
+Relevant past cases from this SOC's records:
+
+[Case bself-gemma4-26b-p3:000095 -- similarity 1.00]
+TCP to port 1723 (unnamed), L7 protocol 0.0
+Volume: 10 in / 6 out packets, 2504 / 256 bytes
+Duration: 565 ms
+Throughput: 35392 src to dst, 3618 dst to src
+Packet size: shortest 40, longest 1076
+Retransmitted: 2 in / 0 out packets
+TTL: min 254, max 255
+TCP flags: client FIN SYN ACK, server FIN SYN ACK
+Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE
+<span class="hl">Verdict: true_positive (confidence 0.95)</span>
+<span class="hl">Attack category: Fuzzers</span>
+Reasoning: The flow targets port 1723 (PPTP) with extremely low volume (16 total packets) and a short duration (565ms). The TCP flags (FIN, SYN, ACK) are highly irregular and non-standard, and the TTL values (254-255) are characteristic of crafted packets. This pattern of low-volume, malformed flag combinations is highly indicative of protocol fuzzing, consistent with historical cases.
+
+[Case bself-gemma4-26b-p3:000029 -- similarity 1.00]
+TCP to port 1723 (unnamed), L7 protocol 0.0
+Volume: 10 in / 8 out packets, 2504 / 336 bytes
+Duration: 780 ms
+Throughput: 25649 src to dst, 3441 dst to src
+Packet size: shortest 40, longest 1076
+Retransmitted: 2 in / 0 out packets
+TTL: min 254, max 255
+TCP flags: client FIN SYN ACK, server FIN SYN ACK
+Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE
+<span class="hl">Verdict: true_positive (confidence 0.95)</span>
+<span class="hl">Attack category: Fuzzers</span>
+Reasoning: The flow targets port 1723 (PPTP) with very low volume (18 packets) and a short duration (780ms). The TCP flags (FIN, SYN, ACK) are highly irregular and non-standard, and the TTL values (254-255) are characteristic of crafted packets. This pattern of low-volume, malformed flag combinations is highly indicative of protocol fuzzing, consistent with historical cases.
+
+[Case bself-gemma4-26b-p3:000154 -- similarity 0.99]
+TCP to port 1723 (unnamed), L7 protocol 115.0
+Volume: 10 in / 8 out packets, 744 / 336 bytes
+Duration: 614 ms
+Throughput: 9678 src to dst, 4370 dst to src
+Packet size: shortest 40, longest 196
+Retransmitted: 2 in / 0 out packets
+TTL: min 254, max 255
+TCP flags: client FIN SYN ACK, server FIN SYN ACK
+Key features: L4_DST_PORT, MIN_TTL, DNS_QUERY_TYPE
+<span class="hl">Verdict: true_positive (confidence 0.95)</span>
+<span class="hl">Attack category: Fuzzers</span>
+Reasoning: The flow targets port 1723 (PPTP) with very low volume (18 total packets) and a short duration (614ms). The TCP flags (FIN, SYN, ACK) are highly irregular and non-standard, and the TTL values (254-255) are characteristic of crafted packets. This pattern of low-volume, malformed flag combinations is highly indicative of protocol fuzzing, consistent with historical cases.
+
+TASK
+Respond with ONLY a single valid JSON object -- no markdown code fences, no prose before or after it -- with exactly these keys:
+
+{
+  "verdict": "&lt;one of: true_positive | false_positive | inconclusive...&gt;",
+  "attack_category": "&lt;the attack family YOU conclude, one of: Analysis | Backdoor | DoS | Exploits | Fuzzers | Generic | Reconnaissance | Shellcode | none | unknown...&gt;",
+  "confidence": &lt;a number between 0.0 and 1.0...&gt;,
+  "rationale_summary": "&lt;at most 400 characters...&gt;"
+}</pre>
+    <div class="caveat">6,196 characters — exactly 2,615 more than Arm A, which is exactly the size of the three
+    precedent blocks above. Nothing else in the prompt differs from Arm A's.</div>`
+  },
+  { id:"llmB", node:"node-llmB", pos:[2460,456], arm:"B",
+    title:"Step 10B — the live model call, with memory", script:"llm_client.py, then triage_prompt.parse_llm_response()",
+    desc:"Same live API call as Step 6A, different prompt. Parsed and validated exactly the same way.",
+    body:`<div class="verdict-grid">
+      <div class="verdict-card"><h4>GEMMA 4 26B — Arm B-self</h4>
+        <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.95</strong> <span style="color:var(--good)">(+0.15 vs Arm A)</span></div>
+        <div class="vc-rationale">"...characteristic of protocol fuzzing, <strong>matching several highly similar
+        historical cases in the SOC records.</strong>"</div>
+      </div>
+      <div class="verdict-card"><h4>GPT-OSS-20B — Arm B-self</h4>
+        <div class="vc-row"><span>verdict</span><span class="badge tp">true_positive</span></div>
+        <div class="vc-row"><span>attack_category</span><span class="badge fuzzers">Fuzzers</span></div>
+        <div class="vc-row"><span>confidence</span><strong>0.95</strong> <span style="color:var(--good)">(+0.15 vs Arm A)</span></div>
+        <div class="vc-rationale">"...matches prior true-positive fuzzer cases. <strong>Detector's Fuzzers
+        hypothesis confirmed.</strong>"</div>
+      </div>
+    </div>
+    <div class="caveat">Both models say so explicitly: confidence rose <em>because</em> memory agreed with them, not
+    because of new evidence in the flow.</div>
+    <pre class="data" style="margin-top:4px;">{
+  "verdict": "true_positive",
+  "attack_category": "Fuzzers",
+  "confidence": 0.95,
+  "rationale_summary": "The flow targets port 1723 (PPTP) with highly
+  irregular TCP flags (FIN, SYN, ACK) and non-standard TTL values (254-255).
+  The low volume (16 total packets) and short duration are characteristic of
+  protocol fuzzing, matching several highly similar historical cases in the
+  SOC records."
+}  <span class="dim">(Gemma's object — same reconstruction basis as the Arm A step: parsed
+                   fields in the required 4-key schema, not a captured raw response)</span></pre>`
+  },
+  { id:"writeback", node:"node-writeback", pos:[2640,266], arm:"B",
+    title:"Step 11B — the new verdict is written back into memory", script:"src/memsoc/memory/store.py — write path",
+    desc:"Because this is the self-memory condition, this verdict becomes a new stored case — the next similar alert in the run will retrieve it too.",
+    body:`<pre class="data">{
+  "seq": 160, "case_id": "bself-gemma4-26b-p3:000160",
+  "uid": "${UID}", "written": true, "policy": "write_all",
+  "embed_ms": 17.46, "add_ms": 39.04,
+  "collection_count_after": <span class="hl">161</span>
+}</pre>
+    <div class="caveat">This exact case — Fuzzers, 0.95, echoing the detector — is now part of memory. Any future
+    alert on port 1723 with this shape will retrieve it as precedent #1.</div>`
+  },
+
+  { id:"final", node:"node-final", pos:[2270,626], arm:"final",
+    title:"Step 12 — graded against ground truth, for the first time", script:"src/memsoc/triage/score_verdicts.py vs artifacts/ground_truth.csv",
+    desc:"The only point in the entire pipeline that ever opens ground_truth.csv. Everything above happened with zero knowledge of the real answer.",
+    body:`<div class="ground-truth-flag">Ground truth for this alert: ${TRUTH} — never seen by any arm above</div>
+    <div class="final-compare" style="margin-top:12px;">
+      <div class="final-col"><h3><span class="dot armA"></span>Arm A — memory off</h3>
+        <div class="kv-grid">
+          <div class="kv"><div class="k">verdict vs truth</div><div class="v" style="color:var(--good)">TP — correctly escalated</div></div>
+          <div class="kv"><div class="k">family named</div><div class="v" style="color:var(--bad)">Fuzzers (wrong)</div></div>
+          <div class="kv"><div class="k">confidence</div><div class="v">0.80 (both models)</div></div>
+        </div>
+      </div>
+      <div class="final-col"><h3><span class="dot armB"></span>Arm B-self — with memory</h3>
+        <div class="kv-grid">
+          <div class="kv"><div class="k">verdict vs truth</div><div class="v" style="color:var(--good)">TP — correctly escalated</div></div>
+          <div class="kv"><div class="k">family named</div><div class="v" style="color:var(--bad)">Fuzzers (wrong, reinforced)</div></div>
+          <div class="kv"><div class="k">confidence</div><div class="v">0.95 (both models, +0.15)</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="caveat strong" style="margin-top:12px;">The honest read: a genuine true positive for all four
+    model/arm combinations — a real attack, correctly escalated, with or without memory. What memory changed was
+    not the verdict (already correct) and not the family name (still wrong) — it was confidence, and it moved the
+    wrong way for the right verdict: both models became 15 points more sure of a label they didn't actually get
+    right, because memory agreed with them. That is the project's own documented copying mechanism, traced here
+    through every real line of code that produces it, on one concrete, fully verifiable alert.</div>`
+  },
+];
+
+let current = -1, playing = false, timer = null;
+const panelStage = document.getElementById("panelStage");
+const progressFill = document.getElementById("progressFill");
+const stepDotsEl = document.getElementById("stepDots");
+const token = document.getElementById("token");
+
+steps.forEach((s,i)=>{
+  const d = document.createElement("div");
+  d.className = "step-dot"; d.title = s.title;
+  d.addEventListener("click", ()=>{ stopPlay(); goTo(i); });
+  stepDotsEl.appendChild(d);
+});
+
+function clearNodeStates(){
+  document.querySelectorAll(".node-box").forEach(n=>n.classList.remove("active","done"));
+  document.querySelectorAll(".node-icon").forEach(n=>n.classList.remove("active"));
+}
+
+function render(){
+  const s = steps[current];
+  if(!s) return;
+  panelStage.innerHTML = `<div class="detail-card">
+    <div class="detail-head"><h2>${s.title}</h2><span class="detail-script mono">${s.script}</span></div>
+    <div class="detail-desc">${s.desc}</div>
+    <div class="detail-body">${s.body}</div>
+  </div>`;
+
+  token.setAttribute("cx", s.pos[0]);
+  token.setAttribute("cy", s.pos[1]);
+  token.setAttribute("class", "token" + (s.arm==="A" ? " armA" : (s.arm==="B"||s.arm==="final") ? " armB" : ""));
+
+  clearNodeStates();
+  for(let i=0;i<=current;i++){
+    const el = document.getElementById(steps[i].node);
+    if(el){
+      el.querySelector(".node-box")?.classList.add(i===current ? "active" : "done");
+      el.querySelector(".node-icon")?.classList.toggle("active", i===current);
+    }
+  }
+
+  const dots = stepDotsEl.children;
+  for(let i=0;i<dots.length;i++){
+    dots[i].classList.toggle("active", i===current);
+    dots[i].classList.toggle("past", i<current);
+  }
+  progressFill.style.width = `${((current+1)/steps.length)*100}%`;
+
+  const nodeEl = document.getElementById(s.node);
+  if(nodeEl) nodeEl.scrollIntoView({behavior:"smooth", block:"nearest", inline:"center"});
+  panelStage.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+
+function goTo(i){ current = Math.max(0, Math.min(steps.length-1, i)); render(); }
+function stepForward(){ if(current >= steps.length-1){ stopPlay(); return; } goTo(current+1); }
+
+function startPlay(){
+  playing = true;
+  document.getElementById("playBtn").textContent = "⏸ Pause";
+  if(current<0) goTo(0); else render();
+  const speed = parseInt(document.getElementById("speedSel").value,10);
+  timer = setInterval(()=>{ if(current >= steps.length-1){ stopPlay(); return; } stepForward(); }, speed);
+}
+function stopPlay(){
+  playing = false;
+  document.getElementById("playBtn").textContent = "▶ Play journey";
+  clearInterval(timer);
+}
+
+document.getElementById("playBtn").addEventListener("click", ()=>{ if(playing) stopPlay(); else startPlay(); });
+document.getElementById("nextBtn").addEventListener("click", ()=>{ stopPlay(); if(current<0) goTo(0); else stepForward(); });
+document.getElementById("prevBtn").addEventListener("click", ()=>{ stopPlay(); goTo(current-1); });
+document.getElementById("resetBtn").addEventListener("click", ()=>{ stopPlay(); current=-1; goTo(0); });
+
+goTo(0);
+</script>
+</body>
+</html>
