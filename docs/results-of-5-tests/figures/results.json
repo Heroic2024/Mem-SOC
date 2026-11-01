@@ -1,0 +1,415 @@
+{
+  "runs": {
+    "armA": {
+      "n": 165,
+      "tp": 123,
+      "fn": 42,
+      "inconclusive": 0,
+      "recall": 0.7454545454545455,
+      "recall_ci": [
+        0.6739275857952518,
+        0.80581240558933
+      ],
+      "family_correct": 90,
+      "family": 0.5454545454545454,
+      "family_ci": [
+        0.46930692952649056,
+        0.6195338096188023
+      ],
+      "cat_accuracy_harness": 0.5454545454545454,
+      "agreement": 0.6545454545454545,
+      "mean_latency_s": 40.39050727272727
+    },
+    "bself": {
+      "n": 165,
+      "tp": 143,
+      "fn": 22,
+      "inconclusive": 0,
+      "recall": 0.8666666666666667,
+      "recall_ci": [
+        0.8063753035183641,
+        0.9102733255869987
+      ],
+      "family_correct": 39,
+      "family": 0.23636363636363636,
+      "family_ci": [
+        0.1779988464839351,
+        0.30672486647336605
+      ],
+      "cat_accuracy_harness": 0.23636363636363636,
+      "agreement": 0.296969696969697,
+      "mean_latency_s": 21.54462787878788
+    },
+    "boracle": {
+      "n": 165,
+      "tp": 163,
+      "fn": 2,
+      "inconclusive": 0,
+      "recall": 0.9878787878787879,
+      "recall_ci": [
+        0.9568876587359363,
+        0.9966696080902077
+      ],
+      "family_correct": 114,
+      "family": 0.6909090909090909,
+      "family_ci": [
+        0.6167256448912234,
+        0.7564054595190068
+      ],
+      "cat_accuracy_harness": 0.6909090909090909,
+      "agreement": 0.8121212121212121,
+      "mean_latency_s": 27.132063030303033
+    },
+    "shuffled": {
+      "n": 165,
+      "tp": 164,
+      "fn": 1,
+      "inconclusive": 0,
+      "recall": 0.9939393939393939,
+      "recall_ci": [
+        0.9664733468308118,
+        0.9989293518813713
+      ],
+      "family_correct": 78,
+      "family": 0.4727272727272727,
+      "family_ci": [
+        0.39803888436273727,
+        0.548656672150087
+      ],
+      "cat_accuracy_harness": 0.4727272727272727,
+      "agreement": 0.5212121212121212,
+      "mean_latency_s": 35.08111454545455
+    },
+    "nolabel": {
+      "n": 165,
+      "tp": 116,
+      "fn": 49,
+      "inconclusive": 0,
+      "recall": 0.703030303030303,
+      "recall_ci": [
+        0.6293353463170657,
+        0.7674866218652426
+      ],
+      "family_correct": 95,
+      "family": 0.5757575757575758,
+      "family_ci": [
+        0.4994661246192855,
+        0.6486017739562027
+      ],
+      "cat_accuracy_harness": 0.5757575757575758,
+      "agreement": 0.703030303030303,
+      "mean_latency_s": 26.628307272727273
+    },
+    "reversed": {
+      "n": 165,
+      "tp": 109,
+      "fn": 56,
+      "inconclusive": 0,
+      "recall": 0.6606060606060606,
+      "recall_ci": [
+        0.5854365824471798,
+        0.7284673625328552
+      ],
+      "family_correct": 49,
+      "family": 0.296969696969697,
+      "family_ci": [
+        0.23251337813475736,
+        0.3706646536829344
+      ],
+      "cat_accuracy_harness": 0.296969696969697,
+      "agreement": 0.37575757575757573,
+      "mean_latency_s": 25.312680606060603
+    }
+  },
+  "benign": {
+    "armA": {
+      "n": 100,
+      "escalated": 63,
+      "dismissed": 37,
+      "inconclusive": 0,
+      "rate": 0.63,
+      "ci": [
+        0.532205295809429,
+        0.7181763946567546
+      ],
+      "mean_latency_s": 45.637155
+    },
+    "bself": {
+      "n": 100,
+      "escalated": 98,
+      "dismissed": 2,
+      "inconclusive": 0,
+      "rate": 0.98,
+      "ci": [
+        0.9299882092714561,
+        0.9944980324498376
+      ],
+      "mean_latency_s": 28.818834
+    }
+  },
+  "tests": {
+    "H1": {
+      "a": "boracle",
+      "b": "shuffled",
+      "field": "category",
+      "fixed": 9,
+      "broken": 45,
+      "p": 7.288430776686283e-07
+    },
+    "H2a": {
+      "a": "armA",
+      "b": "nolabel",
+      "field": "verdict",
+      "fixed": 13,
+      "broken": 20,
+      "p": 0.296206368599087
+    },
+    "H2b": {
+      "a": "bself",
+      "b": "nolabel",
+      "field": "category",
+      "fixed": 60,
+      "broken": 4,
+      "p": 7.363044635805283e-14
+    },
+    "H3_recall": {
+      "a": "armA",
+      "b": "reversed",
+      "field": "verdict",
+      "fixed": 14,
+      "broken": 28,
+      "p": 0.04355852192384191
+    },
+    "H3_family": {
+      "a": "armA",
+      "b": "reversed",
+      "field": "category",
+      "fixed": 7,
+      "broken": 48,
+      "p": 1.3087586125948292e-08
+    },
+    "H4": {
+      "a": "armA",
+      "b": "bself",
+      "field": "verdict (benign)",
+      "fixed": 0,
+      "broken": 35,
+      "p": 5.820766091346741e-11
+    }
+  },
+  "cold_warm": {
+    "armA": {
+      "cold": {
+        "n": 10,
+        "recall": 0.6,
+        "family": 0.5
+      },
+      "warm": {
+        "n": 155,
+        "recall": 0.7548387096774194,
+        "family": 0.5483870967741935
+      }
+    },
+    "bself": {
+      "cold": {
+        "n": 10,
+        "recall": 0.8,
+        "family": 0.4
+      },
+      "warm": {
+        "n": 155,
+        "recall": 0.8709677419354839,
+        "family": 0.22580645161290322
+      }
+    },
+    "boracle": {
+      "cold": {
+        "n": 10,
+        "recall": 0.8,
+        "family": 0.6
+      },
+      "warm": {
+        "n": 155,
+        "recall": 1.0,
+        "family": 0.6967741935483871
+      }
+    },
+    "shuffled": {
+      "cold": {
+        "n": 10,
+        "recall": 0.9,
+        "family": 0.4
+      },
+      "warm": {
+        "n": 155,
+        "recall": 1.0,
+        "family": 0.4774193548387097
+      }
+    },
+    "nolabel": {
+      "cold": {
+        "n": 10,
+        "recall": 0.7,
+        "family": 0.7
+      },
+      "warm": {
+        "n": 155,
+        "recall": 0.7032258064516129,
+        "family": 0.567741935483871
+      }
+    },
+    "reversed": {
+      "cold": {
+        "n": 10,
+        "recall": 0.6,
+        "family": 0.3
+      },
+      "warm": {
+        "n": 155,
+        "recall": 0.6645161290322581,
+        "family": 0.2967741935483871
+      }
+    }
+  },
+  "holm": {
+    "H1": {
+      "raw": 7.288430776686283e-07,
+      "holm": 2.186529233005885e-06
+    },
+    "H2a": {
+      "raw": 0.296206368599087,
+      "holm": 0.296206368599087
+    },
+    "H2b": {
+      "raw": 7.363044635805283e-14,
+      "holm": 3.6815223179026413e-13
+    },
+    "H3": {
+      "raw": 0.04355852192384191,
+      "holm": 0.08711704384768382
+    },
+    "H4": {
+      "raw": 5.820766091346741e-11,
+      "holm": 2.3283064365386963e-10
+    }
+  },
+  "shuffle": {
+    "replacements": 492,
+    "same_family": 133
+  },
+  "family_dist": {
+    "Ground truth": {
+      "Fuzzers": 45,
+      "Exploits": 64,
+      "Reconnaissance": 31,
+      "DoS": 8,
+      "Generic": 8,
+      "Backdoor": 3,
+      "Analysis": 3,
+      "Shellcode": 3,
+      "none": 0,
+      "unknown": 0
+    },
+    "Arm A (p3)": {
+      "Fuzzers": 51,
+      "Exploits": 31,
+      "Reconnaissance": 36,
+      "DoS": 0,
+      "Generic": 3,
+      "Backdoor": 1,
+      "Analysis": 0,
+      "Shellcode": 1,
+      "none": 42,
+      "unknown": 0
+    },
+    "B-self (p3)": {
+      "Fuzzers": 143,
+      "Exploits": 0,
+      "Reconnaissance": 0,
+      "DoS": 0,
+      "Generic": 0,
+      "Backdoor": 0,
+      "Analysis": 0,
+      "Shellcode": 0,
+      "none": 22,
+      "unknown": 0
+    },
+    "B-self reversed (v4)": {
+      "Fuzzers": 73,
+      "Exploits": 31,
+      "Reconnaissance": 5,
+      "DoS": 0,
+      "Generic": 0,
+      "Backdoor": 0,
+      "Analysis": 0,
+      "Shellcode": 0,
+      "none": 56,
+      "unknown": 0
+    },
+    "Label-free (v4)": {
+      "Fuzzers": 48,
+      "Exploits": 34,
+      "Reconnaissance": 21,
+      "DoS": 4,
+      "Generic": 4,
+      "Backdoor": 2,
+      "Analysis": 3,
+      "Shellcode": 0,
+      "none": 49,
+      "unknown": 0
+    },
+    "Shuffled (v4)": {
+      "Fuzzers": 63,
+      "Exploits": 65,
+      "Reconnaissance": 30,
+      "DoS": 2,
+      "Generic": 0,
+      "Backdoor": 1,
+      "Analysis": 0,
+      "Shellcode": 1,
+      "none": 1,
+      "unknown": 2
+    },
+    "B-oracle (p3)": {
+      "Fuzzers": 57,
+      "Exploits": 61,
+      "Reconnaissance": 31,
+      "DoS": 4,
+      "Generic": 1,
+      "Backdoor": 2,
+      "Analysis": 4,
+      "Shellcode": 3,
+      "none": 2,
+      "unknown": 0
+    }
+  },
+  "first_alert_family": {
+    "bself": "Fuzzers",
+    "reversed": "Exploits"
+  },
+  "benign_real_fp": {
+    "armA": [
+      "true_positive",
+      "true_positive",
+      "false_positive"
+    ],
+    "bself": [
+      "true_positive",
+      "true_positive",
+      "true_positive"
+    ]
+  },
+  "benign_escalated_family": {
+    "armA": {
+      "Exploits": 49,
+      "Reconnaissance": 4,
+      "Generic": 6,
+      "DoS": 2,
+      "Fuzzers": 2
+    },
+    "bself": {
+      "Fuzzers": 95,
+      "Exploits": 3
+    }
+  }
+}

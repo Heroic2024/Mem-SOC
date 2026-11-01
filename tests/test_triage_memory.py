@@ -172,6 +172,39 @@ class PrecedentSectionTests(unittest.TestCase):
 
         self.assertNotIn("SHOULD-NOT-RENDER", prompt)
 
+    def test_a_case_with_family_and_reasoning_renders_as_before_byte_for_byte(self):
+
+        # The block exactly as the p3 runs rendered it (BL-170 must not
+        # change any existing condition's prompt).
+        case = _case("r:000001", 0.9)
+
+        self.assertEqual(
+            triage_prompt._render_precedents([case]),
+            "Relevant past cases from this SOC's records:\n\n"
+            f"[Case r:000001 -- similarity 0.90]\n{case.document}\n"
+            "Verdict: true_positive (confidence 0.90)\n"
+            "Attack category: Exploits\n"
+            "Reasoning: Repeated HTTP probing.\n\n",
+        )
+
+        oracle = Case("r:000002", 0.8, 0.2, case.document,
+                      {"verdict": "true_positive", "attack_category": "DoS",
+                       "confidence": 1.0, "rationale_summary": ""})
+
+        self.assertIn("Attack category: DoS\nReasoning: (none recorded)",
+                      triage_prompt._render_precedents([oracle]))
+
+    def test_a_label_free_case_shows_no_family_and_no_reasoning(self):
+
+        case = Case("r:000003", 0.85, 0.15, "TCP to port 80 (http)",
+                    {"verdict": "true_positive", "confidence": 0.8, "label_source": "llm"})
+
+        block = triage_prompt._render_precedents([case])
+
+        self.assertIn("Verdict: true_positive (confidence 0.80)\n\n", block)
+        self.assertNotIn("Attack category", block)
+        self.assertNotIn("Reasoning", block)
+
 
 class GeminiClientTests(unittest.TestCase):
 
@@ -536,6 +569,300 @@ class ProtocolRunTests(unittest.TestCase):
         self.assertEqual(expected[0], [])
         self.assertTrue(all(len(seqs) <= 3 and all(s < i for s in seqs)
                             for i, seqs in enumerate(expected)))
+
+
+class ProtocolV4Tests(unittest.TestCase):
+    """Protocol v4: one arm per experiment, its own run ids, the pre-registration gate."""
+
+    def setUp(self):
+
+        from memsoc.triage import protocol_v4
+
+        self.v4 = protocol_v4
+        self.tmp = tempfile.TemporaryDirectory()
+        self.calls = []
+
+        alerts = [dict(FIXTURE_RECORD, uid=f"u{i}") for i in range(4)]
+        flows = {a["uid"]: FIXTURE_FLOW for a in alerts}
+        self.loaded = {"alerts": alerts, "flows": flows, "first": alerts[:3]}
+
+        test = self
+
+        test.seeded = 0
+
+        class Recorder:
+            skipped_writes = 0
+
+            def __init__(self, run_id, condition):
+                self.condition = condition
+                self.writes = 0
+                self.collection = mock.Mock(count=lambda: test.seeded + self.writes)
+
+            def retrieve(self, record, flow):
+                return []
+
+            def write(self, *args, **kwargs):
+                self.writes += 1
+
+        def fake_triage(record, flow, seq, mem, run_id=""):
+            test.calls.append((seq, mem.condition, run_id))
+            if test.fail_at == len(test.calls):
+                raise llm_client.DailyBudgetExhausted("quota", retry_after=None)
+            return {
+                "uid": record["uid"], "seq": seq, "run_id": run_id, "memory_condition": mem.condition,
+                "verdict": "true_positive", "attack_category": "Exploits", "confidence": 0.9,
+                "rationale_summary": "r", "precedent_used": "", "precedent_count": 0,
+                "latency_ms": 1.0, "model_id": "gemma-4-26b-a4b-it",
+            }
+
+        self.fail_at = None
+
+        for patch in (
+            mock.patch("memsoc.paths.RUNS_DIR", os.path.join(self.tmp.name, "runs")),
+            mock.patch("memsoc.paths.MEMORY_STORE_DIR", os.path.join(self.tmp.name, "memory")),
+            mock.patch("memsoc.triage.protocol_run._run_config", return_value={"protocol": "p3"}),
+            mock.patch("memsoc.memory.open_memory", side_effect=Recorder),
+            mock.patch.object(triage_runner, "triage_alert", side_effect=fake_triage),
+            mock.patch("time.sleep"),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+        self.log = self.v4.protocol_run.Log(Path(self.tmp.name) / "runs" / "protocol.log")
+
+    def tearDown(self):
+
+        self.tmp.cleanup()
+
+    def _checks(self, failing=()):
+        """The p3 checks all passing, except the names in `failing`."""
+
+        names = ("Python 3.13", "no local changes to src/, tests/, requirements/",
+                 "git checkout is the protocol tag", "data file generated_logs.jsonl")
+
+        return mock.patch(
+            "memsoc.triage.protocol_run._checks",
+            return_value=([(n, "FAIL" if n in failing else "PASS", "") for n in names], self.loaded),
+        )
+
+    def _git(self, tagged=True, note=True, listed=True):
+        """HEAD is or is not the v4 tag; the note and the benign list are or are not committed."""
+
+        def fake(*args):
+            if args[0] == "rev-parse":
+                return "abc"
+            if args[0] == "rev-list":
+                return "abc" if tagged else None
+            if args[0] == "ls-files":
+                if args[-1] == self.v4.PREREGISTRATION:
+                    return args[-1] if note else None
+                return args[-1] if listed else None
+            if args[0] == "status":
+                return ""
+            if args[0] == "log":
+                return "abc 2026-10-30T00:00:00+00:00" if note else None
+            return None
+
+        return mock.patch("memsoc.triage.protocol_run._git", side_effect=fake)
+
+    def _verdicts(self, run_id):
+
+        path = Path(self.tmp.name) / "runs" / run_id / "triage_verdicts.jsonl"
+
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+    def test_reversed_runs_the_same_alerts_in_exactly_reverse_order(self):
+
+        with self._checks(), self._git():
+            self.v4.run(self.log, "reversed", wait_on_quota=False)
+
+        run_id = "bself-rev-gemma4-26b-p4"
+        rows = self._verdicts(run_id)
+
+        self.assertEqual([r["uid"] for r in rows], ["u2", "u1", "u0"])
+        self.assertEqual([seq for seq, _, _ in self.calls], [0, 1, 2])
+        self.assertEqual({c for _, c, _ in self.calls}, {"self"})
+
+        config = json.loads((Path(self.tmp.name) / "runs" / run_id / "run_config.json")
+                            .read_text(encoding="utf-8"))
+        self.assertEqual(config["alert_order_sha256"],
+                         self.v4._alert_order_sha256(self.loaded["first"][::-1]))
+
+    def test_nolabel_runs_the_p3_alerts_under_its_own_condition(self):
+
+        with self._checks(), self._git():
+            self.v4.run(self.log, "nolabel", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [(s, "nolabel", "bnolabel-gemma4-26b-p4") for s in range(3)])
+
+    def test_v4_run_ids_never_collide_with_v3(self):
+
+        from memsoc.triage import protocol_run
+
+        run_id = self.v4._run_id("shuffled")
+        v3 = {f"{prefix}-gemma4-26b-{protocol_run.PROTOCOL}" for _, prefix in protocol_run.ARMS}
+
+        self.assertEqual(run_id, "bshuf-gemma4-26b-p4")
+        self.assertEqual(self.v4._run_id("shuffled", dry_run=True), "bshuf-gemma4-26b-p4-dryrun")
+        self.assertNotIn(run_id, v3)
+
+    def test_one_arm_over_the_alerts_rows_marked_p4(self):
+
+        with self._checks(), self._git():
+            self.v4.run(self.log, "shuffled", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [(s, "shuffled", "bshuf-gemma4-26b-p4") for s in range(3)])
+
+        rows = self._verdicts("bshuf-gemma4-26b-p4")
+        self.assertEqual([r["protocol"] for r in rows], ["p4"] * 3)
+        self.assertEqual([r["experiment"] for r in rows], ["shuffled"] * 3)
+
+        config = json.loads((Path(self.tmp.name) / "runs" / "bshuf-gemma4-26b-p4"
+                             / "run_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["protocol"], "p4")
+        self.assertEqual(config["protocol_tag"], "memsoc-protocol-v4")
+        self.assertEqual(config["alert_order_sha256"], self.v4._alert_order_sha256(self.loaded["first"]))
+
+    def test_no_real_run_without_the_tag_or_the_committed_note(self):
+
+        for tagged, note in ((False, True), (True, False)):
+
+            with self.subTest(tagged=tagged, note=note):
+                with self._checks(), self._git(tagged=tagged, note=note):
+                    with self.assertRaises(SystemExit) as stopped:
+                        self.v4.run(self.log, "shuffled", wait_on_quota=False)
+
+                self.assertEqual(stopped.exception.code, 1)
+                self.assertEqual(self.calls, [])
+
+    def test_dry_run_tolerates_only_tag_note_and_clean_tree(self):
+
+        with self._checks(failing=("no local changes to src/, tests/, requirements/",)), \
+                self._git(tagged=False, note=False):
+            self.v4.run(self.log, "shuffled", wait_on_quota=False, dry_run=True)
+
+        self.assertEqual(self.calls, [(s, "shuffled", "bshuf-gemma4-26b-p4-dryrun")
+                                      for s in range(self.v4.DRY_RUN_ALERTS)])
+
+        self.calls.clear()
+
+        with self._checks(failing=("data file generated_logs.jsonl",)), self._git(tagged=False, note=False):
+            with self.assertRaises(SystemExit):
+                self.v4.run(self.log, "shuffled", wait_on_quota=False, dry_run=True)
+
+        self.assertEqual(self.calls, [])
+
+    def test_a_rerun_resumes_without_repeating_any_verdict(self):
+
+        self.fail_at = 2
+
+        with self._checks(), self._git():
+            with self.assertRaises(SystemExit) as stopped:
+                self.v4.run(self.log, "shuffled", wait_on_quota=False)
+
+        self.assertEqual(stopped.exception.code, 2)
+
+        self.fail_at = None
+        self.calls.clear()
+
+        with self._checks(), self._git():
+            self.v4.run(self.log, "shuffled", wait_on_quota=False)
+
+        self.assertEqual([seq for seq, _, _ in self.calls], [1, 2])
+        self.assertEqual(len(self._verdicts("bshuf-gemma4-26b-p4")), 3)
+
+    def _benign(self, ok=True):
+        """A three-flow benign set, its files matching (or not) the committed list."""
+
+        from memsoc.triage import protocol_v4_benign
+
+        records = [dict(FIXTURE_RECORD, uid=f"b{i}", v4_benign={"set": "hard"}) for i in range(3)]
+        flows = {r["uid"]: FIXTURE_FLOW for r in records}
+
+        return (
+            mock.patch.object(protocol_v4_benign, "load", return_value=(records, flows)),
+            mock.patch.object(protocol_v4_benign, "check", return_value=(ok, "test")),
+        )
+
+    def _seed_source(self, content=b"p3 store"):
+        """A stand-in p3 B-self store, and SEED_STORES pinned to its hash."""
+
+        root = Path(self.tmp.name) / "shared"
+        store = root / "memory" / "bself-gemma4-26b-p3"
+        store.mkdir(parents=True)
+        (store / "chroma.sqlite3").write_bytes(b"p3 store")
+        self.seeded = 165
+
+        return (
+            mock.patch("memsoc.paths.P3_GEMMA_RESULTS", str(root)),
+            mock.patch.dict(self.v4.SEED_STORES,
+                            {"bself-gemma4-26b-p3": (165, hashlib.sha256(content).hexdigest())}),
+        )
+
+    def test_benign_arm_numbers_on_from_the_attacks_and_keeps_the_real_score(self):
+
+        load, check = self._benign()
+
+        with self._checks(), self._git(), load, check:
+            self.v4.run(self.log, "benign-armA", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [(s, "off", "armA-benign-gemma4-26b-p4") for s in (165, 166, 167)])
+        rows = self._verdicts("armA-benign-gemma4-26b-p4")
+        self.assertEqual([r["v4_benign"] for r in rows], [{"set": "hard"}] * 3)
+
+    def test_no_benign_run_without_the_committed_list_or_matching_files(self):
+
+        for listed, files_ok in ((False, True), (True, False)):
+
+            with self.subTest(listed=listed, files_ok=files_ok):
+                load, check = self._benign(ok=files_ok)
+
+                with self._checks(), self._git(listed=listed), load, check:
+                    with self.assertRaises(SystemExit):
+                        self.v4.run(self.log, "benign-armA", wait_on_quota=False)
+
+                self.assertEqual(self.calls, [])
+
+    def test_seeded_arm_copies_the_verified_store_and_checks_its_size(self):
+
+        load, check = self._benign()
+        source, pinned = self._seed_source()
+
+        with self._checks(), self._git(), load, check, source, pinned:
+            self.v4.run(self.log, "benign-bself", wait_on_quota=False)
+
+        copy = Path(self.tmp.name) / "memory" / "bself-benign-gemma4-26b-p4" / "chroma.sqlite3"
+        self.assertEqual(copy.read_bytes(), b"p3 store")
+        self.assertEqual([seq for seq, _, _ in self.calls], [165, 166, 167])
+
+        config = json.loads((Path(self.tmp.name) / "runs" / "bself-benign-gemma4-26b-p4"
+                             / "run_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["seed_store"], "bself-gemma4-26b-p3")
+
+    def test_seeded_arm_refuses_a_store_that_is_not_the_verified_one(self):
+
+        load, check = self._benign()
+        source, pinned = self._seed_source(content=b"some other store")
+
+        with self._checks(), self._git(), load, check, source, pinned:
+            with self.assertRaises(SystemExit) as stopped:
+                self.v4.run(self.log, "benign-bself", wait_on_quota=False)
+
+        self.assertEqual(stopped.exception.code, 1)
+        self.assertEqual(self.calls, [])
+        self.assertFalse((Path(self.tmp.name) / "memory" / "bself-benign-gemma4-26b-p4").exists())
+
+    def test_seeded_arm_refuses_a_store_of_the_wrong_size(self):
+
+        load, check = self._benign()
+        source, pinned = self._seed_source()
+
+        with self._checks(), self._git(), load, check, source, pinned:
+            self.seeded = 164
+            with self.assertRaises(SystemExit):
+                self.v4.run(self.log, "benign-bself", wait_on_quota=False)
+
+        self.assertEqual(self.calls, [])
 
 
 class ApiErrorRetryTests(unittest.TestCase):
