@@ -50,6 +50,7 @@ package under `src/memsoc/` and one directory here.
 | See the retrieval-quality charts (token fit, family match, thresholds) | [`../notebooks/retrieval-quality.ipynb`](../notebooks/retrieval-quality.ipynb) — run in the memory venv; PNGs land in `artifacts/figures/` |
 | Know what is broken or missing | [`PRODUCT_BACKLOG.md`](./PRODUCT_BACKLOG.md) |
 | See where the project stands | [`status/phase0.md`](./status/phase0.md) |
+| **Read the one-page project summary** | [`status/executive-summary.md`](./status/executive-summary.md) (plain text: [`status/executive-summary.txt`](./status/executive-summary.txt)) |
 | **See every test result so far (Arm A and B together) and the options for the next run** | [`status/testing-results-to-date.md`](./status/testing-results-to-date.md) |
 | **Read the first complete three-arm result (Gemma 4 26B, 165 alerts, with figures)** | [`status/gemma-p3-results.md`](./status/gemma-p3-results.md) |
 | See the Qwen 3.8 27B A vs B-self result and figures | [`status/qwen-results.md`](./status/qwen-results.md) |
@@ -99,6 +100,8 @@ docs/
 ├── design-assets/             scripts + figures for the design document
 ├── status-assets/             scripts + figures for the status write-ups
 ├── status/
+│   ├── executive-summary.md
+│   ├── executive-summary.txt
 │   ├── phase0.md
 │   ├── testing-results-to-date.md
 │   ├── testing-protocol-v3.md
