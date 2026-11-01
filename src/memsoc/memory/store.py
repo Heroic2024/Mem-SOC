@@ -21,8 +21,13 @@ The three conditions (decisions.md A3, work-split.md)
               by the querying alert's uid. The same cases come back;
               only their label content is destroyed. Every replacement
               is logged to shuffles.jsonl.
+- "nolabel" -- protocol v4, supplementary. "self" without the attack
+              family: stores the LLM's own verdict and confidence, but
+              no attack_category and no rationale (which would name the
+              family). triage_prompt renders such a case without those
+              two lines.
 
-"self", "oracle" and "shuffled" are the same class. _verdict_fields()
+"self", "oracle", "shuffled" and "nolabel" are the same class. _verdict_fields()
 changes metadata only: the embedding text is rendered by the same
 case_text.render() in every condition, so no condition can change which
 cases come back -- only what they say. _shuffle_labels() runs after the
@@ -54,7 +59,7 @@ from memsoc import paths
 from memsoc.memory import case_text
 
 
-CONDITIONS = ("off", "self", "oracle", "shuffled")
+CONDITIONS = ("off", "self", "oracle", "shuffled", "nolabel")
 
 TOP_K = 3
 
@@ -124,7 +129,7 @@ class NullMemoryLayer:
 
 
 class MemoryLayer:
-    """Arm B. Shared by "self", "oracle" and "shuffled"; see the module docstring."""
+    """Arm B. Shared by every condition but "off"; see the module docstring."""
 
     def __init__(self, run_id: str, condition: str):
 
@@ -416,13 +421,14 @@ class MemoryLayer:
 
     def _verdict_fields(self, record, verdict) -> dict:
         """
-        The ONLY place the conditions diverge.
+        The ONLY place the conditions diverge on the write path.
 
         "self" stores the LLM's verdict. "oracle" stores the true label
         in its place and no rationale: the LLM's rationale argues for the
         LLM's verdict, and pairing it with a different label would be the
         "mix" condition decisions.md A3 dropped. "shuffled" stores what
         "oracle" stores; its labels are replaced on read, never on disk.
+        "nolabel" stores the LLM's verdict and confidence only.
         """
 
         if self.condition == "self":
@@ -433,6 +439,16 @@ class MemoryLayer:
                 "attack_category": verdict["attack_category"],
                 "confidence": float(verdict["confidence"]),
                 "rationale_summary": str(verdict["rationale_summary"])[:RATIONALE_MAX_CHARS],
+            }
+
+        if self.condition == "nolabel":
+
+            # No attack_category and no rationale: the keys are absent,
+            # not empty, so the prompt leaves their lines out entirely.
+            return {
+                "label_source": "llm",
+                "verdict": verdict["verdict"],
+                "confidence": float(verdict["confidence"]),
             }
 
         label, attack = self._true_label(record["uid"])

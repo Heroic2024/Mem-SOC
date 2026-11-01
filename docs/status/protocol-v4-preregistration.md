@@ -188,3 +188,29 @@ and the built alert files match it.
    guess and the SHAP block are the detector's real output. The real attack probability, prediction and
    confidence are logged with every alert and verdict under `v4_benign`. Confirmed by Aadit; awaiting the
    supervisor's confirmation.
+
+### 8.2 (2026-10-30, Aadit): the remaining §7 items
+
+Decided by Aadit on 2026-10-30, before the `memsoc-protocol-v4` tag and before any v4 result. Items 1–3 were
+put to the supervisor; their confirmation is not yet recorded here and will be added as a later addendum
+when given.
+
+| # | §7 item | Decision |
+|---|---|---|
+| 1 | Shown score on benign alerts (§8.1, BL-181) | **Kept.** The "Attack/benign score" line shows 1.0; the real values stay logged under `v4_benign`. |
+| 2 | Label-free edit to `triage_prompt.py` (§3.2, BL-170) | **Approved.** For the label-free condition only, the precedent block leaves out the `Attack category:` and `Reasoning:` lines and shows the alert text, verdict and confidence. Arm A's prompt and every p3 prompt stay byte-identical. §3.2, H2a and H2b stay in. |
+| 3 | Family-only shuffle (§3.1, BL-172) | **Confirmed as the intended test.** All 165 alerts are attacks, so only the family can change. Stated with the result. |
+| 4 | False-escalation denominator (§4, BL-177) | **All 100 benign flows.** False-escalation rate = flows marked "attack" ÷ 100. Inconclusive verdicts count in the denominator but not as escalations, and their number is reported separately. |
+| 5 | Multiple testing (§5, BL-177) | **Both are reported:** each raw p-value and its Holm-adjusted value across the five hypotheses (H1, H2a, H2b, H3, H4). "Significant" in §5 is read on the Holm-adjusted value; the raw p is shown beside it. |
+
+With this, every §7 item is settled. Nothing above §8 has been changed.
+
+### 8.3 (2026-10-30, Aadit): supervisor confirmation of §8.2 items 1–3
+
+The supervisor confirmed all three on 2026-10-30, before the `memsoc-protocol-v4` tag and before any v4 run:
+
+1. The benign alerts show an "Attack/benign score" of 1.0, with the real values logged (BL-181).
+2. The label-free condition's precedent block leaves out the Attack category and Reasoning lines (BL-170).
+3. The family-only shuffle is the intended test (BL-172).
+
+No decision changed. Every §7 item is settled and confirmed.

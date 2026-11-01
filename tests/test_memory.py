@@ -452,6 +452,32 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(store.shuffle_seed("C-test-1"), store.shuffle_seed("C-test-1"))
         self.assertNotEqual(store.shuffle_seed("C-test-1"), store.shuffle_seed("C-test-2"))
 
+    def test_nolabel_stores_verdict_and_confidence_but_no_family_or_reasoning(self):
+
+        from memsoc.memory import open_memory
+
+        own = open_memory("own", "self")
+        bare = open_memory("bare", "nolabel")
+
+        own.write(FIXTURE_RECORD, FIXTURE_FLOW, FIXTURE_VERDICT, 1, [])
+        bare.write(FIXTURE_RECORD, FIXTURE_FLOW, FIXTURE_VERDICT, 1, [])
+
+        a = own.collection.get(include=["documents", "metadatas"])
+        b = bare.collection.get(include=["documents", "metadatas"])
+
+        # Same text, so the same cases come back; only what they say differs.
+        self.assertEqual(a["documents"], b["documents"])
+
+        stored = b["metadatas"][0]
+        self.assertEqual(stored["verdict"], FIXTURE_VERDICT["verdict"])
+        self.assertEqual(stored["confidence"], FIXTURE_VERDICT["confidence"])
+        self.assertNotIn("attack_category", stored)
+        self.assertNotIn("rationale_summary", stored)
+
+        retrieved = bare.retrieve(FIXTURE_RECORD, FIXTURE_FLOW)[0].metadata
+        self.assertNotIn("attack_category", retrieved)
+        self.assertNotIn("rationale_summary", retrieved)
+
 
 if __name__ == "__main__":
     unittest.main()
