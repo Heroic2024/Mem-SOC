@@ -57,6 +57,7 @@ package under `src/memsoc/` and one directory here.
 | **Run the three-model memory test as a tester (step-by-step, for you and your AI agent)** | [`status/testing-protocol-v3.md`](./status/testing-protocol-v3.md) |
 | **Run the live demo for the final presentation** | [`status/final-demo-runbook.md`](./status/final-demo-runbook.md) |
 | See the new experiments the 2026-10-28 paper review asks for, and the order to run them | [`status/paper-review-experiments.md`](./status/paper-review-experiments.md) |
+| **Read the results of the 5 protocol v4 tests (shuffled, label-free, hard-benign ×2, reversed), with figures** | [`results-of-5-tests/README.md`](./results-of-5-tests/README.md) |
 | Read what protocol v4 tests and what result counts for or against each idea | [`status/protocol-v4-preregistration.md`](./status/protocol-v4-preregistration.md) |
 
 ---
@@ -108,6 +109,7 @@ docs/
 │   ├── final-demo-runbook.md
 │   ├── paper-review-experiments.md
 │   └── protocol-v4-preregistration.md
+├── results-of-5-tests/        protocol v4 results report + figures/
 └── archive/                   superseded, banner-marked, do not follow
 ```
 
