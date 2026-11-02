@@ -1,8 +1,50 @@
-# Agentic SOC — Memory-Augmented LLM Alert Triage
+<div align="center">
 
-> Capstone project. Current phase: **Phase 2 — memory-augmented arm (Arm B).**
+# MemSOC
+
+### Agentic SOC — Memory-Augmented LLM Alert Triage
+
+*Does giving an LLM triage system a memory of past cases make it better, worse, or just different?*
+
+[![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)](./deploy/detection.Dockerfile)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![Docker Compose](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](./deploy/docker-compose.yml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](./requirements/detection.txt)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](./dashboard/package.json)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)](./dashboard/package.json)
+
+[![LightGBM](https://img.shields.io/badge/LightGBM-4.7%20(frozen)-9ACD32)](./requirements/detection.txt)
+[![SHAP](https://img.shields.io/badge/SHAP-0.48-FF0D57)](./requirements/detection.txt)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5.9-FF6F61)](./requirements/memory.txt)
+[![Embeddings](https://img.shields.io/badge/embeddings-all--MiniLM--L6--v2-FFD21E?logo=huggingface&logoColor=black)](./requirements/memory.txt)
+[![Dataset](https://img.shields.io/badge/dataset-NF--UNSW--NB15--v3-8A2BE2)](./docs/log-generation/overview.md)
+[![Project](https://img.shields.io/badge/project-capstone%20research-informational)](./PROJECT_BRIEF.md)
+
+</div>
+
+> Capstone project. Current phase: **Phase 5 — reporting layer.** Phases 0–4 are done.
 
 A SOC alert triage system built around a persistent memory layer, evaluated against a memoryless baseline under strict experimental control.
+
+---
+
+## Contents
+
+- [The problem](#the-problem)
+- [The idea](#the-idea)
+- [Research questions](#research-questions)
+- [Results so far](#results-so-far)
+- [Architecture](#architecture)
+- [Experimental design](#experimental-design)
+- [Objectives and deliverables](#objectives)
+- [Evaluation](#evaluation)
+- [Known risks](#known-risks)
+- [Running it](#running-it)
+- [Layout](#layout)
+- [Documentation](#documentation)
+- [Roadmap](#roadmap)
+- [Stack](#stack)
+- [License](#license)
 
 ---
 
@@ -33,6 +75,32 @@ The memory layer is the crux of this research. Everything else in the system is 
 
 ---
 
+## Results So Far
+
+**In short: memory changes the model's decisions a lot, and what is stored in memory decides whether that helps or hurts.** Models largely copy the attack family of the cases they retrieve. Correct labels in memory help; the model's own unchecked verdicts can spread one mistake across every similar alert.
+
+Main experiment (Gemma 4 26B, 165 real attack alerts, same alerts in every arm):
+
+| Measure | Arm A (no memory) | B-self (own verdicts) | B-oracle (true labels) |
+|---|---|---|---|
+| Attacks caught (recall) | 74.5% | 86.7% | 98.8% |
+| Attack family named correctly | 54.5% | 23.6% | 69.1% |
+
+Protocol v4 then tested *why*, with five follow-up runs:
+
+- **Correct labels are what make B-oracle work.** Shuffling its labels dropped family accuracy to 47.3%, below no memory.
+- **Storing no family label removes the copying harm** (family accuracy 23.6% → 57.6%), but recall fell to 70.3%.
+- **A memory full of attacks makes harmless traffic look dangerous.** On 100 hard benign flows, B-self escalated 98, against 63 with no memory.
+- **B-self's recall gain did not survive a reversed alert order**, so that part of the main result is not robust.
+
+<p align="center">
+  <img src="./docs/results-of-5-tests/figures/01-family-accuracy.png" alt="Bar chart of attack-family accuracy by memory condition: Arm A 54.5%, B-self 23.6%, B-oracle 69.1%, shuffled labels 47.3%, label-free B-self 57.6%, B-self reversed 29.7%, kNN vote 58.8%." width="760">
+</p>
+
+Full write-ups: [protocol v4 results](./docs/results-of-5-tests/README.md) · [main three-arm result](./docs/status/gemma-p3-results.md) · [all results to date](./docs/status/testing-results-to-date.md) · [executive summary](./docs/status/executive-summary.md)
+
+---
+
 ## Architecture
 
 ```
@@ -47,6 +115,8 @@ The memory layer is the crux of this research. Everything else in the system is 
 | 2 | LightGBM classifier + SHAP | Flags attacks, predicts the attack type, and explains which features drove it. **Frozen**; not under evaluation |
 | 3 | ChromaDB + sentence-transformers | **The research crux.** Stores past cases and retrieves the most similar ones as precedent |
 | 4 | LLM | Decides each alert's verdict and attack type, and writes explainable reports |
+
+End-to-end walkthrough: [`docs/architecture/end-to-end-pipeline.md`](./docs/architecture/end-to-end-pipeline.md).
 
 ## Experimental Design
 
@@ -106,7 +176,7 @@ Every proportion carries a confidence interval, and the arms are compared with a
 
 ---
 
-## Running it
+## Running It
 
 > **Setting up, or pulling after the restructure?** Read
 > **[`docs/deployment/operations.md` §2 — Before You Test](./docs/deployment/operations.md)**
@@ -114,18 +184,20 @@ Every proportion carries a confidence interval, and the arms are compared with a
 > layout (order matters — stop the old stack *before* pulling), which
 > images to rebuild, and a four-step pre-test checklist.
 
-Three services start by default — detection (`:8000`), report (`:8001`)
-and the dashboard (`:8080`):
+**Prerequisites:** Docker with Compose, and a local copy of `NF-UNSW-NB15-v3.csv` (not in the repo). Point `MEMSOC_HOST_DATA` at the folder that holds it — see step 3 of the operations guide.
+
+Three services start by default:
+
+| Service | Default URL | What it is |
+|---|---|---|
+| Dashboard | <http://localhost:8080> | React UI; <http://localhost:8080/api-docs> documents **every endpoint in both services** with working "Try it out" buttons |
+| Detection | <http://localhost:8000/docs> | Frozen LightGBM + SHAP |
+| Report | <http://localhost:8001/docs> | LLM triage and report generation |
 
 ```bash
 docker compose -f deploy/docker-compose.yml build
 docker compose -f deploy/docker-compose.yml up -d
 ```
-
-Then open <http://localhost:8080> for the dashboard, or
-<http://localhost:8080/api-docs> for **one page documenting every endpoint
-in both services**, with working "Try it out" buttons. Each service also
-keeps its own `/docs` on its own port.
 
 Drive the full workflow interactively — generate flows, classify them,
 produce a report:
@@ -178,26 +250,35 @@ tests/  docs/  data/
 
 ---
 
-## Repository
+## Documentation
 
 - [`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md) — authoritative design context. **Read this first.**
 - [`CLAUDE.md`](./CLAUDE.md) — operating rules for anyone, human or AI, working in this repo.
 - [`docs/README.md`](./docs/README.md) — documentation index.
+- [`docs/decisions.md`](./docs/decisions.md) — open questions, settled decisions, and what was run.
 - [`docs/PRODUCT_BACKLOG.md`](./docs/PRODUCT_BACKLOG.md) — **every known bug, gap and piece of tech debt.** Check here before assuming something is finished.
 - [`docs/memory-layer/`](./docs/memory-layer/) — the memory layer (Layer 3): architecture, case schema, read/write paths, configuration, risks, open questions.
+- [`docs/results-of-5-tests/`](./docs/results-of-5-tests/README.md) — the latest results (protocol v4), with figures.
 
 ## Roadmap
 
 - [x] **Phase 0** — Setup, data prep, case schema definition
-- [ ] **Phase 1** — Memoryless baseline (Arm A)
-- [ ] **Phase 2** — Memory-augmented arm (Arm B)
-- [ ] **Phase 3** — Tuning: top-k, threshold, write policy, cold start
-- [ ] **Phase 4** — Evaluation and error-propagation analysis
+- [x] **Phase 1** — Memoryless baseline (Arm A)
+- [x] **Phase 2** — Memory-augmented arm (Arm B)
+- [x] **Phase 3** — Tuning: top-k, threshold, write policy, cold start
+- [x] **Phase 4** — Evaluation and error-propagation analysis
 - [ ] **Phase 5** — Reporting layer
 
 ## Stack
 
-ChromaDB (Apache 2.0) · sentence-transformers (all-MiniLM-L6-v2) · LightGBM + SHAP · NF-UNSW-NB15-v3
+| Area | Tools |
+|---|---|
+| Detection | LightGBM 4.7 · SHAP 0.48 · scikit-learn 1.7 (frozen models in `models/`) |
+| Memory | ChromaDB 1.5.9 (Apache 2.0, persistent mode) · sentence-transformers `all-MiniLM-L6-v2` |
+| Triage | LLM over HTTP (Gemini API and Groq used in the experiments) |
+| Services | Python 3.13 · FastAPI · Uvicorn · Docker Compose · nginx |
+| Dashboard | React 19 · Vite · Recharts |
+| Data | NF-UNSW-NB15-v3 |
 
 ## License
 
