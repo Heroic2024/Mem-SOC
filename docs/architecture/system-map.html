@@ -1,0 +1,1669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemSOC System Map</title>
+<!--
+  MemSOC system map: an interactive 3D diagram of the project as it stood on
+  2026-11-15 (branch aryan). Self-contained: no build step, no network, no
+  libraries. The 3D view is a small software renderer drawn on a 2D canvas
+  (orbit camera, perspective projection, depth-sorted boxes).
+
+  Open the file in a browser, or run serve-system-map.ps1 next to it.
+
+  Every number and backlog reference on this page was typed in by hand from
+  the sources named in the "Sources" section of the overview panel. Nothing
+  is read live from the repo, so the page goes stale when those sources
+  change (backlog BL-198).
+-->
+<style>
+  :root {
+    --bg: #0a0f1f; --bg2: #10172e; --ink: #e9eeff; --mute: #8e99c4; --rule: #252f58;
+    --accent: #ff7aa8; --hi: #62e8ff; --onhi: #04141b; --chip: rgba(150, 170, 255, 0.14);
+    --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 13px; line-height: 1.55;
+    display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+  }
+  button { font: inherit; color: inherit; background: none; border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--hi); outline-offset: 2px; }
+  .lbl { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); }
+  .btn { font-family: var(--mono); padding: 6px 11px; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+  .btn:hover { border-color: var(--hi); color: var(--hi); }
+  .btn[aria-pressed="true"] { background: var(--hi); border-color: var(--hi); color: var(--onhi); }
+  .btn.primary { border-color: var(--hi); color: var(--hi); }
+  .btn.primary:hover { background: var(--hi); color: var(--onhi); }
+
+  /* ---------- top bar ---------- */
+  header { display: flex; align-items: stretch; flex-wrap: wrap; background: var(--bg2); border-bottom: 1px solid var(--rule); }
+  .tile { padding: 8px 16px 9px; border-right: 1px solid var(--rule); min-width: 0; }
+  .tile b { display: block; font-family: var(--mono); font-weight: 600; font-size: 13.5px; white-space: nowrap; }
+  .tile b.num { color: var(--hi); }
+  .arms { display: flex; align-items: center; padding: 0 14px; border-right: 1px solid var(--rule); }
+  .seg { display: flex; }
+  .seg .btn { border-radius: 0; margin-left: -1px; }
+  .seg .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+  .seg .btn:last-child { border-radius: 0 6px 6px 0; }
+  .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 6px 14px; }
+
+  /* ---------- body ---------- */
+  main { display: grid; grid-template-columns: 208px minmax(0, 1fr) 350px; min-height: 0; }
+  nav { background: var(--bg2); border-right: 1px solid var(--rule); overflow-y: auto; padding: 12px 10px 24px; }
+  nav h2 { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; font-weight: 400; color: var(--mute); margin: 16px 4px 7px; text-transform: uppercase; }
+  nav h2:first-child { margin-top: 2px; }
+  .row {
+    display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; align-items: baseline;
+    width: 100%; text-align: left; padding: 6px 9px; margin-bottom: 4px; font-size: 12px;
+    border-color: transparent; background: var(--chip); transition: background 0.12s, border-color 0.12s;
+  }
+  .row .k { font-family: var(--mono); color: var(--hi); font-size: 10.5px; }
+  .row .n { font-family: var(--mono); color: var(--mute); font-size: 10px; }
+  .row.mem .k { color: var(--accent); }
+  .row.mem { box-shadow: inset 2px 0 0 var(--accent); }
+  .row:hover { border-color: var(--hi); }
+  .row.sel { background: var(--hi); color: var(--onhi); }
+  .row.sel .k, .row.sel .n { color: var(--onhi); }
+
+  /* ---------- stage ---------- */
+  #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+  canvas.over { cursor: pointer; }
+  .glass { background: color-mix(in srgb, var(--bg2) 82%, transparent); border: 1px solid var(--rule); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .zoom { position: absolute; top: 12px; right: 12px; display: grid; gap: 5px; }
+  .zoom button { width: 28px; height: 28px; line-height: 1; font-size: 15px; background: var(--bg2); }
+  .zoom button:hover { border-color: var(--hi); color: var(--hi); }
+  #caption { position: absolute; left: 12px; top: 12px; right: 56px; max-width: 640px; padding: 9px 13px; display: none; }
+  #caption.on { display: block; }
+  #caption .lbl { color: var(--hi); display: block; margin-bottom: 2px; }
+  #dock { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 9px 13px; width: fit-content; max-width: calc(100% - 24px); }
+  .grp { display: flex; align-items: center; gap: 7px; }
+  #dock .btn { padding: 5px 9px; font-size: 10px; }
+  input[type="range"] { width: 84px; accent-color: var(--hi); }
+  .sw { width: 20px; height: 20px; border-radius: 50%; padding: 0; border: 2px solid var(--rule); }
+  .sw[aria-pressed="true"] { border-color: var(--hi); box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3px var(--hi); }
+  #hints { position: absolute; left: 14px; top: 14px; right: 56px; pointer-events: none; opacity: 0.8; }
+  #caption.on ~ #hints { display: none; }
+  #tip { position: fixed; pointer-events: none; z-index: 5; max-width: 300px; padding: 7px 10px; font-size: 12px; display: none; }
+  #tip b { display: block; font-family: var(--mono); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: 10.5px; color: var(--hi); margin-bottom: 2px; }
+
+  /* ---------- right panel ---------- */
+  aside { background: var(--bg2); border-left: 1px solid var(--rule); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--rule); }
+  .tabs button { font-family: var(--mono); border: 0; border-radius: 0; border-bottom: 2px solid transparent; padding: 10px 2px 8px; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { color: var(--hi); border-bottom-color: var(--hi); }
+  .tabs.hidden { display: none; }
+  #panel { overflow-y: auto; padding: 16px 18px 44px; }
+  #panel h1 { font-size: 19px; font-weight: 650; margin: 3px 0 2px; letter-spacing: -0.01em; }
+  #panel .sub { color: var(--mute); margin: 0 0 14px; }
+  #panel h3 { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; font-weight: 400; color: var(--mute); text-transform: uppercase; border-bottom: 1px solid var(--rule); padding-bottom: 5px; margin: 20px 0 9px; }
+  #panel p { margin: 0 0 10px; }
+  #panel code { font-family: var(--mono); font-size: 11.5px; background: var(--chip); padding: 1px 4px; border-radius: 3px; overflow-wrap: anywhere; }
+  #panel mark { background: none; color: var(--hi); font-weight: 650; }
+  #panel ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  #panel ol li { counter-increment: s; display: grid; grid-template-columns: 28px 1fr; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+  #panel ol li::before { content: counter(s, decimal-leading-zero); font-family: var(--mono); color: var(--hi); font-size: 10.5px; padding-top: 2px; }
+  .bl { display: grid; grid-template-columns: 70px 1fr; gap: 6px; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+  .bl .id { font-family: var(--mono); font-size: 11px; }
+  .bl .id i { display: block; font-style: normal; color: var(--accent); font-size: 9.5px; letter-spacing: 0.1em; }
+  .back { font-family: var(--mono); border: 0; padding: 0; margin-bottom: 10px; color: var(--mute); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .back:hover { color: var(--hi); }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 10px; font-size: 12px; }
+  th, td { text-align: right; padding: 5px 5px; border-bottom: 1px solid var(--rule); font-weight: 400; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+  .col-on { background: var(--chip); color: var(--hi); font-weight: 650; }
+  thead th.col-on { color: var(--hi); }
+  .note { color: var(--mute); font-size: 12px; }
+
+  @media (max-width: 900px) {
+    body { overflow: auto; display: block; }
+    main { display: block; }
+    nav { display: none; }
+    #stage { height: 68vh; border-bottom: 1px solid var(--rule); }
+    aside { border-left: 0; display: block; }
+    #panel { overflow: visible; }
+    .actions { margin-left: 0; }
+    #hints { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tile"><span class="lbl">Repository</span><b>Mem-SOC · aryan</b></div>
+  <div class="tile"><span class="lbl">Phase</span><b>5 of 5 · reporting</b></div>
+  <div class="arms" role="group" aria-label="Experimental arm">
+    <span class="lbl" style="margin-right:10px">Arm</span>
+    <div class="seg">
+      <button class="btn" data-arm="off" aria-pressed="false">A · no memory</button>
+      <button class="btn" data-arm="self" aria-pressed="true">B-self</button>
+      <button class="btn" data-arm="oracle" aria-pressed="false">B-oracle</button>
+    </div>
+  </div>
+  <div class="tile"><span class="lbl">Attacks caught</span><b class="num" id="s-recall"></b></div>
+  <div class="tile"><span class="lbl">Family named right</span><b class="num" id="s-family"></b></div>
+  <div class="tile"><span class="lbl">Harmless flows escalated</span><b class="num" id="s-benign"></b></div>
+  <div class="tile"><span class="lbl">Backlog</span><b>174 rows · 120 not done</b></div>
+  <div class="actions">
+    <button class="btn primary" id="b-run">▶ Run the flow</button>
+    <button class="btn" id="b-step">Trace one step</button>
+    <button class="btn" id="b-reset">Reset view</button>
+  </div>
+</header>
+
+<main>
+  <nav id="nav" aria-label="Components"></nav>
+
+  <div id="stage">
+    <canvas id="cv" role="img" aria-label="3D diagram of the MemSOC pipeline: data stream, detector, memory layer, LLM triage, scoring and reporting. The component list on the left gives the same content as text."></canvas>
+    <div class="zoom"><button id="z-in" aria-label="Zoom in">+</button><button id="z-out" aria-label="Zoom out">−</button></div>
+    <div id="caption" class="glass" aria-live="polite"><span class="lbl" id="cap-n"></span><span id="cap-t"></span></div>
+    <div id="hints" class="lbl">Drag to orbit · Shift-drag or right-drag to pan · Scroll to zoom · Click a block · Double-click goes inside</div>
+    <div id="dock" class="glass">
+      <div class="grp" role="group" aria-label="Camera view">
+        <span class="lbl">View</span>
+        <button class="btn" data-view="iso">Iso</button>
+        <button class="btn" data-view="top">Top</button>
+        <button class="btn" data-view="front">Front</button>
+        <button class="btn" data-view="memory">Memory</button>
+      </div>
+      <div class="grp">
+        <button class="btn" id="t-rotate" aria-pressed="false">Auto-rotate</button>
+        <button class="btn" id="t-labels" aria-pressed="true">Labels</button>
+      </div>
+      <div class="grp"><label class="lbl" for="r-speed">Flow speed</label><input id="r-speed" type="range" min="0.4" max="3" step="0.1" value="1"></div>
+      <div class="grp"><label class="lbl" for="r-lift">Height</label><input id="r-lift" type="range" min="0.3" max="2.2" step="0.05" value="1"></div>
+      <div class="grp" role="group" aria-label="Colour theme">
+        <span class="lbl">Theme</span>
+        <button class="sw" data-pal="midnight" title="Midnight" aria-label="Midnight theme" style="background:linear-gradient(135deg,#141f45 50%,#62e8ff 50%)"></button>
+        <button class="sw" data-pal="aurora" title="Aurora" aria-label="Aurora theme" style="background:linear-gradient(135deg,#0f3338 50%,#b6ff6e 50%)"></button>
+        <button class="sw" data-pal="paper" title="Paper" aria-label="Paper theme" style="background:linear-gradient(135deg,#d2c79c 50%,#9c3a17 50%)"></button>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="tabs hidden" id="tabs" role="tablist">
+      <button data-tab="what" role="tab">What it does</button>
+      <button data-tab="built" role="tab">How it's built</button>
+      <button data-tab="inside" role="tab">Inside</button>
+      <button data-tab="cond" role="tab">Condition</button>
+    </div>
+    <div id="panel"></div>
+  </aside>
+</main>
+
+<div id="tip" class="glass"></div>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+
+/* ------------------------------------------------------------------
+   Content. Hand-entered from the repo as of 2026-11-15; see "Sources"
+   in the overview panel. `cond` rows are open backlog items.
+   ------------------------------------------------------------------ */
+
+const GROUPS = [
+  ["The triage loop", ["D", "G", "L", "C", "T", "P", "M", "V"]],
+  ["Layer 3 · memory, the variable", ["S", "X", "E", "R", "Q", "W"]],
+  ["Measurement", ["O", "K", "H", "N"]],
+  ["What comes out", ["A", "B", "I", "U", "Z"]],
+  ["Supporting", ["J", "Y"]],
+];
+
+const NODES = {
+  D: {
+    name: "Dataset", x: 0, y: 8, w: 2, d: 2, h: 0.9, slabs: 3,
+    sub: "the recorded traffic everything starts from",
+    what: [
+      "A public set of recorded network traffic, **NF-UNSW-NB15-v3**: about 2.36 million flows, each already labelled as harmless or as a named kind of attack.",
+      "Only flows the detector never saw in training are used, so nothing downstream is marked on material it has already memorised.",
+      "It is a lab capture, not real company traffic. That limit is stated wherever results are reported.",
+    ],
+    built: [
+      "`NF-UNSW-NB15-v3.csv`, 55 columns, 2.36M rows. Not in the repo: it lives in `data/` (gitignored) and is bind-mounted into the containers.",
+      "Found through `paths.find_dataset()`; `MEMSOC_DATASET_CSV` overrides it.",
+      "The held-out row numbers are in `artifacts/heldout_rows.npy`, produced by the held-out split in `detection/training/`.",
+    ],
+    cond: [
+      ["BL-100", "P1", "The usable held-out attack pool is 3,713 rows, not 470,122."],
+      ["BL-162", "P4", "All results come from this one dataset and one stream."],
+      ["BL-031", "P2", "Dropping rows with non-finite values tilts the mix toward Exploits; the size of the tilt was never measured."],
+      ["BL-116", "P3", "Fresh-machine setup does not say where the dataset goes."],
+    ],
+  },
+  G: {
+    name: "Flow generator", x: 4, y: 8, w: 2, d: 2, h: 1,
+    sub: "turns the dataset into a repeatable alert stream",
+    what: [
+      "Picks a sample of held-out flows and writes them out in a fixed, shuffled order. The same sample size always gives **the same sequence**, so every arm sees exactly the same alerts.",
+      "The true labels go to a separate file. The stream itself carries no answer.",
+    ],
+    built: [
+      "`src/memsoc/logstream/nfv3_log_generator.py`. `SEED = 42` is frozen; `MEMSOC_SAMPLE_SIZE` sets how many flows.",
+      "Writes `artifacts/generated_logs.jsonl` (a Zeek-style envelope plus the 48 model features) and `artifacts/ground_truth.csv` (uid, label, attack).",
+      "Stream version 2 (2026-10-10) restricts the pool to held-out rows. Version 1 overlapped the training set on 82% of its flows.",
+    ],
+    inside: [
+      "Read the 48 feature column names.",
+      "Keep only rows the detector never trained on.",
+      "Drop rows with non-finite values.",
+      "Seeded selection, then a seeded shuffle.",
+      "Check each record against the 48-feature contract.",
+      "Write the stream and, separately, the ground truth.",
+    ],
+    cond: [
+      ["BL-022", "P1", "Every run silently overwrites the previous stream and its ground truth. Back both up first."],
+      ["BL-030", "P3", "The continuous stream path (`stream_to_api.py`) still samples the whole dataset."],
+    ],
+  },
+  L: {
+    name: "Detector", x: 8, y: 8, w: 2.6, d: 2.6, h: 1.9,
+    sub: "the frozen classifier that raises the alerts",
+    what: [
+      "A conventional machine-learning model looks at each flow and says attack or harmless. For an attack, a second model names the attack family and SHAP lists which features pushed it there.",
+      "It is **frozen**: same weights and thresholds in every arm. It is an input to the experiment, not something being tested.",
+    ],
+    built: [
+      "`src/memsoc/detection/`, with two LightGBM pickles in `models/` (binary, and a 37 MB multiclass).",
+      "Served by its own app, `memsoc.api.app_detection`, default port 8000. `POST /api/logs` takes one NetFlow record and returns verdict + SHAP + alert.",
+      "The pickles load at startup, so the health check only passes once the model is really ready.",
+    ],
+    inside: [
+      "`validate_input`: all 48 features present.",
+      "`prepare_dataframe`.",
+      "`binary_prediction`: attack or benign. Benign stops here.",
+      "`multiclass_prediction`: which attack family.",
+      "SHAP: which features drove the call.",
+      "`AlertGenerator` builds the alert record.",
+    ],
+    cond: [
+      ["BL-027", "P1", "`run_training.py` hardcodes a dataset path that does not exist."],
+      ["BL-075", "P2", "Emits no version identifier, so memory stores `detector_version = \"unknown\"`."],
+      ["BL-029", "P2", "The alert carries no uid, so it cannot be joined back to its flow from the alert alone."],
+      ["BL-182", "P3", "It does raise false alarms on unseen benign traffic, though the paper can read as if it never does."],
+      ["BL-160", "P3", "It names the family better than every LLM arm (82.4% on the same alerts); nothing yet shows the LLM adds value over it."],
+    ],
+  },
+  C: {
+    name: "Live capture", x: 12, y: 8, w: 2, d: 2, h: 0.7,
+    sub: "saves the detector's answers to a file",
+    what: [
+      "Sends the stream through the detector and saves every answer. That file is **the hand-off**: everything after this point reads the file and never calls the detector again.",
+    ],
+    built: [
+      "`src/memsoc/triage/live_capture.py` writes `artifacts/model_outputs/live_results.jsonl`.",
+      "Flags: `--loop`, `--interval`, `--reset`.",
+    ],
+    inside: [
+      "Read `generated_logs.jsonl` in order.",
+      "POST each flow to `/api/logs`.",
+      "Append the detector's full JSON response to `live_results.jsonl`.",
+    ],
+    cond: [
+      ["BL-021", "P3", "The file is append-only across runs unless `--reset` is passed, so one report can mix two unrelated runs."],
+      ["BL-026", "P2", "Records carry `src_ip` and `dst_ip` at top level, which a careless case renderer would pick up."],
+    ],
+  },
+  T: {
+    name: "Triage runner", x: 16, y: 8, w: 2.6, d: 2.6, h: 1.4,
+    sub: "takes one alert from start to verdict",
+    what: [
+      "The heart of the loop. For each flagged alert it asks memory for precedent, builds the prompt, calls the LLM, checks the reply and logs the verdict.",
+      "Arm A and Arm B are **this same code**. The only thing that changes is which memory object it is handed.",
+    ],
+    built: [
+      "`src/memsoc/triage/triage_runner.py`: `triage_alert()` and `write_back()`. `--memory off|self|oracle` picks the arm.",
+      "Two seams only: `mem.retrieve()` before the prompt, `mem.write()` after the verdict is logged. Under `off` both are no-ops inside the memory layer, not branches here.",
+      "Never calls the detection API and never reads `ground_truth.csv`.",
+    ],
+    inside: [
+      "`cases = mem.retrieve(record, flow)`. Empty in Arm A.",
+      "`triage_prompt.render(record, flow, cases)`.",
+      "Measure the precedent block's size, in characters.",
+      "`llm_client.call_triage_llm(prompt)`.",
+      "`parse_llm_response`: validate the reply.",
+      "Append the verdict row to `triage_verdicts.jsonl`.",
+      "`write_back()`: `mem.write(...)`, only after the row is safely on disk.",
+    ],
+    cond: [
+      ["BL-136", "P2", "Nothing stops two runners working on the same run id at once."],
+      ["BL-127", "P2", "Parse and truncation retries re-send with no pacing, which sets off rate-limit errors."],
+      ["BL-128", "P4", "Parse retries re-send an identical prompt, so at temperature 0 they are close to useless."],
+    ],
+  },
+  P: {
+    name: "Prompt template", x: 20, y: 8, w: 2, d: 2, h: 0.9,
+    sub: "the page of text the LLM actually reads",
+    what: [
+      "It shows the detector's guess, its confidence, the SHAP evidence and the flow's real values. The detector's label is offered as a hypothesis the analyst may overrule.",
+      "In the memory arms a block of past cases is added. **Nothing else differs between arms.**",
+    ],
+    built: [
+      "`src/memsoc/triage/triage_prompt.py`: `render(record, flow, cases)` and `parse_llm_response()`. A protected component.",
+      "Verdicts: `true_positive`, `false_positive`, `inconclusive`. Eight detector families plus `none` and `unknown`. The top 8 SHAP features are shown.",
+      "`_render_precedents()` writes the memory block. The label-free variant drops the `Attack category:` and `Reasoning:` lines (approved, BL-170).",
+    ],
+    inside: [
+      "`build_alert_view`.",
+      "`_render_flow`: the NetFlow values.",
+      "`_render_shap`: the top 8 attributions.",
+      "`_render_precedents`: only when cases were retrieved.",
+      "`parse_llm_response`: enforce the required keys and vocabulary.",
+    ],
+    cond: [
+      ["BL-106", "P1 · blocked", "The verdict schema cannot express the escalation metric now treated as primary; fixing it touches this protected component."],
+      ["BL-018", "P2", "Baseline prompt strength is unvalidated, so Arm A may be unfairly weak."],
+      ["BL-181", "P2", "Benign alerts show the detector score as 1.0, not its real value."],
+      ["BL-149", "P3", "It cannot name Worms: the vocabulary lists eight families."],
+    ],
+  },
+  M: {
+    name: "LLM", x: 24, y: 8, w: 2.6, d: 2.6, h: 2.2,
+    sub: "the language model that makes the call",
+    what: [
+      "It gets one prompt per alert and answers once. Same model, same settings, in every arm.",
+      "Three models were tested: **Gemma 4 26B** (the main result), gpt-oss-20b and Qwen 3.8 27B.",
+    ],
+    built: [
+      "`src/memsoc/triage/llm_client.py`: `call_triage_llm()` goes to Groq or Gemini, chosen once by `config.TRIAGE_PROVIDER`. Plain `requests`, no SDK.",
+      "Temperature 0. Handles 429 retries, truncation retries and a daily request budget.",
+      "The aggregate report path shares the same client (`call_groq`).",
+    ],
+    cond: [
+      ["BL-161", "P3", "Results cannot be reproduced once the hosted free-tier models change or are withdrawn."],
+      ["BL-078", "P2", "A live Groq API key sits in plaintext in the gitignored `.env`."],
+      ["BL-131", "P3", "A daily-quota wait can spin for up to 24 hours with no progress."],
+      ["BL-130", "P4", "The request-budget file is written without a temp-and-swap."],
+      ["BL-024", "P3", "Rationales contain non-ASCII typography."],
+    ],
+  },
+  V: {
+    name: "Verdict log", x: 28, y: 8, w: 2, d: 2, h: 0.9, slabs: 3,
+    sub: "one line per decision",
+    what: [
+      "For every alert: the verdict, the attack family, the confidence, a short rationale and which past cases were shown. Enough to reconstruct any decision later.",
+    ],
+    built: [
+      "`artifacts/runs/<run-id>/triage_verdicts.jsonl`.",
+      "Fields include `uid`, `arm`, `memory_condition`, `seq`, `detector_label`, `verdict`, `attack_category`, `confidence`, `rationale_summary`, `precedent_used`, `precedent_similarities`, `model_id`, `latency_ms`.",
+      "Gitignored, like everything under `artifacts/`.",
+    ],
+    cond: [
+      ["BL-152", "P2", "The final report says these logs are in the repository, but `artifacts/` is gitignored."],
+      ["BL-145", "P3", "The gpt-oss-20b and Qwen per-verdict files are not on the machine the capstone report was written on."],
+    ],
+  },
+
+  S: {
+    name: "Memory switch", mem: true, x: 16, y: 4, w: 1.5, d: 1.5, h: 0.5,
+    sub: "the one switch in the experiment",
+    what: [
+      "Off gives Arm A. On gives Arm B, in one of several flavours that differ only in what gets stored or shown.",
+      "Off is a stand-in object that does nothing, so the baseline **cannot write to memory even by accident**.",
+    ],
+    built: [
+      "`memsoc.memory.open_memory(run_id, condition)` in `store.py`.",
+      "`off` returns `NullMemoryLayer`: it never touches disk and never loads the embedding model. The other four conditions are one class, `MemoryLayer`.",
+      "Conditions change metadata only. The embedding text is identical in all of them, so no condition can change which cases come back, only what they say.",
+    ],
+    inside: [
+      "`off`: `retrieve()` returns nothing, `write()` does nothing. Arm A.",
+      "`self`: store the LLM's own verdict, right or wrong. The headline.",
+      "`oracle`: store the true label instead. A declared ceiling.",
+      "`shuffled` (v4): write as oracle; on read, swap each case's label for a random true one.",
+      "`nolabel` (v4): store verdict and confidence, but no family and no rationale.",
+    ],
+    cond: [
+      ["BL-159", "P2 · in progress", "The claim that harm comes from what memory stores, not what it retrieves, is not fully isolated by the evaluated arms."],
+      ["BL-113", "P4", "Oracle cases differ from self cases in ways the LLM can see beyond the label (an empty rationale)."],
+    ],
+  },
+  X: {
+    name: "Case text", mem: true, x: 16, y: 1, w: 2, d: 2, h: 0.8,
+    sub: "what decides whether two alerts are similar",
+    what: [
+      "Turns an alert into a short piece of text. Two alerts count as similar when their texts are similar.",
+      "It leaves out the detector's label and the LLM's verdict on purpose, so a new alert and a stored case always have the same shape.",
+    ],
+    built: [
+      "`src/memsoc/memory/case_text.py`, `render()`: the only implementation, used by both the read and the write path.",
+      "Template 1.0 (chosen 2026-10-13): alert-only text plus the detector's top-3 SHAP feature names, raw numbers.",
+      "Adding the detector's label raised the overall match rate but collapsed it on the alerts the detector got wrong.",
+    ],
+    cond: [
+      ["BL-014", "P1", "Retrieval adds little where it is needed most: nearest-neighbour family precision is 0.640 overall but 0.208 on the detector's errors."],
+      ["BL-111", "P3", "Team decision needed on hybrid numeric retrieval."],
+      ["BL-112", "P5", "Bucketing numeric fields into words made hard-case retrieval worse; a follow-up is untried."],
+    ],
+  },
+  E: {
+    name: "Embedder", mem: true, x: 20, y: 1, w: 2, d: 2, h: 1.2,
+    sub: "turns text into numbers that can be compared",
+    what: [
+      "Turns the case text into a list of 384 numbers, so that similar texts land close together. **One model**, used both for storing and for searching.",
+      "If two different models were used, search would quietly return nonsense. So exactly one place in the code loads it.",
+    ],
+    built: [
+      "`src/memsoc/memory/embedding.py`, `embed()`. `sentence-transformers/all-MiniLM-L6-v2`, pinned by name, by Hugging Face commit `1110a243…` and to CPU.",
+      "MiniLM cuts text off at 256 tokens without warning, so every text is length-checked first and an over-long one raises `CaseTextTooLong`.",
+      "A protected component.",
+    ],
+    inside: [
+      "`get_model()`: one cached instance.",
+      "`check_length()`: count tokens with the model's own tokenizer.",
+      "`embed()`: return a 384-number vector.",
+    ],
+    cond: [
+      ["BL-045", "P2", "The token-count measurements the design rests on cannot be reproduced from committed code."],
+      ["BL-107", "P2", "The memory virtualenv lives outside the repository and is hard to discover."],
+      ["BL-173", "P3", "One team machine's venv has `transformers` and `numpy` versions that differ from the protocol pins."],
+    ],
+  },
+  R: {
+    name: "Read path", mem: true, x: 20, y: 4, w: 2, d: 2, h: 1,
+    sub: "finds precedent before the LLM decides",
+    what: [
+      "Before the LLM sees an alert, this finds the **three most similar earlier cases** and hands them over as precedent.",
+      "It only looks backwards: the store holds earlier alerts only.",
+      "There is no similarity cut-off, so the three nearest are always shown, however far away they are.",
+    ],
+    built: [
+      "`MemoryLayer.retrieve(record, flow)` in `store.py`. `TOP_K = 3`, cosine space, no threshold (`decisions.md` C8).",
+      "Every candidate is logged to `retrievals.jsonl` with its distance and similarity.",
+    ],
+    inside: [
+      "Render the alert with `case_text.render()`.",
+      "`embed()` it.",
+      "Ask ChromaDB for the top 3.",
+      "`shuffled` only: replace the labels, after the cases are chosen.",
+      "Log every candidate.",
+      "Return the cases to the runner.",
+    ],
+    cond: [
+      ["BL-014", "P1", "On the detector's errors, the retrieved neighbours match the true family only 20.8% of the time."],
+      ["BL-005", "P2", "The Phase 3 row for top-k, similarity threshold and cold-start handling is still open."],
+    ],
+  },
+  Q: {
+    name: "Case store", mem: true, x: 24, y: 2, w: 2.6, d: 2.6, h: 1.3, slabs: 4,
+    sub: "the memory itself",
+    what: [
+      "Every past case, kept on disk as a vector plus its details. It survives restarts, which is the whole point of institutional memory.",
+      "Each run starts from an empty store, so the earliest alerts get little help (cold start).",
+    ],
+    built: [
+      "ChromaDB 1.5.9 `PersistentClient`, collection `cases`, at `artifacts/memory/<run-id>/` through `paths.memory_store()`.",
+      "Sidecar logs beside it: `cases.jsonl`, `writes.jsonl`, `retrievals.jsonl`, and `shuffles.jsonl` for the shuffled condition.",
+      "Opening a store written under a different template, model or condition raises `SchemaMismatch`.",
+      "Protected: never wiped or regenerated without explicit instruction.",
+    ],
+    cond: [
+      ["BL-002", "P1 · in progress", "The original \"memory layer does not exist\" row is still marked in progress."],
+      ["BL-183", "P3", "The received p3 results have two expected homes on disk."],
+      ["BL-076", "P4", "The memory docs wrongly say Chroma rejects list-valued metadata."],
+      ["BL-069", "P5", "ChromaDB's limits at scale must appear in the limitations write-up."],
+    ],
+  },
+  W: {
+    name: "Write path", mem: true, x: 28, y: 4, w: 2, d: 2, h: 1,
+    sub: "stores the case so later alerts can find it",
+    what: [
+      "After a verdict is safely logged, the case goes into memory.",
+      "**What gets stored is the experiment.** B-self stores the model's own verdict, right or wrong. B-oracle stores the true answer.",
+      "This is where one mistake can spread: a wrong case can be copied onto every similar alert that follows.",
+    ],
+    built: [
+      "`MemoryLayer.write(record, flow, verdict, seq, precedent_used)`. `WRITE_POLICY = \"write_all\"` (`decisions.md` C5).",
+      "`_verdict_fields()` chooses what the case says. Ground truth is read here, for `oracle` and `shuffled`, and nowhere else in the memory layer.",
+      "The rationale is capped at 500 characters. Every attempt is logged to `writes.jsonl`.",
+    ],
+    inside: [
+      "Render the case text, with the same `render()` the read path uses.",
+      "`embed()` it.",
+      "`_verdict_fields()`: pick what the case says, by condition.",
+      "`_metadata()`.",
+      "`_is_duplicate()` check.",
+      "Add to ChromaDB.",
+      "Log to `cases.jsonl` and `writes.jsonl`.",
+    ],
+    cond: [
+      ["BL-004", "P1", "The row for an explicit error-propagation test (inject a mis-stored case, measure the damage) is still open."],
+      ["BL-005", "P2", "Write policy is still listed as an open Phase 3 decision."],
+    ],
+  },
+
+  O: {
+    name: "Ground truth", x: 4, y: 13.5, w: 2, d: 2, h: 0.6, slabs: 2,
+    sub: "the answer key, kept apart",
+    what: [
+      "The true label of every flow. It sits in a separate file and is used only for marking, after the run.",
+      "One declared exception: the oracle arm reads it at write time. That is why oracle is a ceiling and never the headline.",
+    ],
+    built: [
+      "`artifacts/ground_truth.csv` (uid, label, attack), written by the generator as a matched pair with the stream.",
+      "`score_verdicts.py` is the only module in the triage path that opens it.",
+    ],
+    cond: [
+      ["BL-022", "P1", "Overwritten together with the stream on every generator run."],
+      ["BL-016", "P2", "Only detector-flagged flows are evaluated, so precision and a full confusion matrix cannot be reported."],
+    ],
+  },
+  K: {
+    name: "Scoring harness", x: 28, y: 13.5, w: 2.6, d: 2.6, h: 1.6,
+    sub: "marks the verdicts and tests the differences",
+    what: [
+      "Marks the verdicts against the answer key and says whether a difference between arms is real or luck.",
+      "It reports three things separately: was the verdict right, was the family right, and did the LLM simply echo the detector.",
+    ],
+    built: [
+      "`src/memsoc/triage/score_verdicts.py`. Plain Python, no LLM.",
+      "Wilson intervals, exact McNemar paired tests, and a cluster bootstrap that resamples whole groups of near-duplicate alerts. Also a cold-start split and a cost summary.",
+      "Protected: metric definitions are not edited after results are seen.",
+    ],
+    inside: [
+      "Read the verdicts and the ground truth; join on `uid`.",
+      "`score()`: verdict, family and echo rate.",
+      "`wilson_interval()` on every proportion.",
+      "`paired_mcnemar()` between arms, alert by alert.",
+      "`cluster_bootstrap_ci()`.",
+      "`cold_start_split()`: first alerts apart from the rest.",
+      "`cost_summary()`, then `report()`.",
+    ],
+    cond: [
+      ["BL-105", "P1", "Objective 1, \"reduce false-positive volume\", was unmeasurable as written."],
+      ["BL-017", "P2", "Sample size is below what the review asked for."],
+      ["BL-007", "P2", "The row asking for frozen, concrete metric definitions is still open."],
+      ["BL-119", "P3", "Prints a stale detector baseline (0.881) measured on the old, contaminated stream."],
+      ["BL-188", "P3", "Near-duplicate grouping does not use the network protocol, though the comments say it does."],
+    ],
+  },
+  H: {
+    name: "Protocol runners", x: 16, y: 12.5, w: 2.6, d: 2, h: 0.9,
+    sub: "fixed recipes so every run is the same",
+    what: [
+      "They pin down which alerts, which arms, in what order and with which settings. Nothing can be changed from the command line.",
+      "**v3** is the main three-arm test. **v4** is five follow-up tests that asked why memory behaved as it did.",
+    ],
+    built: [
+      "`src/memsoc/triage/protocol_run.py` (v3): for each of the first 165 alerts, Arm A, then B-self, then B-oracle. `--preflight`, `--status`, `--verify`, `--package`.",
+      "`protocol_v4.py`: one memory arm per experiment, compared against the frozen p3 results, which it never opens for writing. `protocol_v4_benign.py` builds the 100 hard benign flows.",
+      "Both call the same `triage_alert()` and `write_back()`. They add scheduling, not logic.",
+    ],
+    cond: [
+      ["BL-122", "P1 · in progress", "The protocol v1 release row is still in progress."],
+      ["BL-158", "P2", "Every arm was run once, in one fixed order."],
+      ["BL-185", "P2", "v4 contradicts two pre-registered hypotheses and the paper does not yet say so."],
+      ["BL-129", "P3", "A commit made during a multi-day run halts all three arms."],
+      ["BL-144", "P3", "The cross-model comparison is confounded by different run settings."],
+      ["BL-184", "P4", "The v4 statistics and charts were made by a one-off script outside the repo."],
+    ],
+  },
+  N: {
+    name: "kNN baseline", x: 33, y: 13.5, w: 1.5, d: 1.5, h: 0.5,
+    sub: "a sanity check with no LLM at all",
+    what: [
+      "Let the three nearest past cases vote on the attack family, using their true labels.",
+      "It gets **97 of 165 right (58.8%)**. Only B-oracle beats it, which raises a fair question about how much the LLM adds.",
+    ],
+    built: [
+      "`python -m memsoc.triage.knn_baseline`.",
+      "Uses the retrieval the p3 runs actually logged, not a recomputation. A tie goes to the nearest.",
+    ],
+    cond: [
+      ["BL-019", "P3", "Other comparators, such as few-shot prompting, are still missing."],
+      ["BL-179", "P5", "Only the text-embedding row of the baseline exists."],
+    ],
+  },
+
+  A: {
+    name: "Stats engine", x: 12, y: 4, w: 2, d: 2, h: 0.9,
+    sub: "all the arithmetic for the report",
+    what: [
+      "Counts, percentages and risk scores for a whole run. The LLM is never allowed to compute a number; it only receives these.",
+    ],
+    built: [
+      "`src/memsoc/triage/stats_engine.py`: `compute_statistics()`, `build_findings()`, `risk_score()`. Pure Python, no network.",
+      "Reads `live_results.jsonl` and nothing else.",
+    ],
+    cond: [
+      ["BL-040", "P2", "No automated tests for the triage layer or the report API."],
+      ["BL-079", "P3", "Severity weights are duplicated by hand in `memory/case_ranker/risk.py`."],
+    ],
+  },
+  B: {
+    name: "Report generator", x: 12, y: 0.5, w: 2, d: 2, h: 1.2,
+    sub: "writes the security report · Phase 5, in progress",
+    what: [
+      "Writes the security report for a whole run. The numbers come from the stats engine; the LLM only writes the explanation around them.",
+      "**This is the part still being built.** The technical view exists. The plain-language view for non-technical readers does not yet.",
+    ],
+    built: [
+      "`src/memsoc/triage/generate_report.py` with `report_prompt.py`. Writes `security_report_*.json` and `.md` to `artifacts/reports/`.",
+      "Tables are rendered straight from the stats engine's output, not from anything the LLM returns.",
+      "Keeps the 10 most recent reports.",
+    ],
+    inside: [
+      "`stats_engine.read_live_results()`.",
+      "`compute_statistics()`.",
+      "`build_findings()`.",
+      "`report_prompt.render()`: verified stats plus a sample of findings.",
+      "One LLM call.",
+      "`parse_llm_response()`: narrative text only, never a number.",
+      "`render_markdown()` and `write_report()`.",
+      "`prune_old_reports()`.",
+    ],
+    cond: [
+      ["BL-008", "P3", "Dual-audience reporting is half delivered: there is no separate plain-language view."],
+      ["BL-146", "P3", "The rule that the LLM never introduces a number is enforced only by prompt wording."],
+      ["BL-023", "P4", "Retention deletes older reports automatically."],
+    ],
+  },
+  I: {
+    name: "Report API", x: 8, y: 0.5, w: 2, d: 2, h: 0.8,
+    sub: "hands finished reports to the dashboard",
+    what: [
+      "A small read-only web service. It does no processing of its own: it returns report files exactly as they were written.",
+    ],
+    built: [
+      "`memsoc.api.app_reports`, default port 8001: `GET /api/reports`, `GET /api/reports/{name}`, `GET /health`, and `GET /api/openapi/merged`, one document covering both services.",
+      "Kept apart from the detection app on purpose: this one holds the LLM credentials, that one loads the model pickles.",
+    ],
+    cond: [
+      ["BL-071", "P3", "The `/services/...` prefixes are hardcoded in four places that must stay in sync."],
+      ["BL-070", "P3", "The whole `.env` file is passed into the report and controller containers."],
+    ],
+  },
+  U: {
+    name: "Dashboard", x: 4, y: 0.5, w: 2.6, d: 2, h: 1,
+    sub: "what an analyst opens",
+    what: [
+      "A web page with the reports, charts and findings. It also hosts one page documenting every API endpoint in the system.",
+    ],
+    built: [
+      "`dashboard/`: React 19, Vite and Recharts, served by nginx at `http://localhost:8080` by default.",
+      "nginx is also the gateway: `/services/detection/*` and `/services/report/*` proxy to the two services, and `/api-docs` renders the merged OpenAPI document.",
+      "Tabs: Overview, Technical, Trends, Actions.",
+    ],
+    cond: [
+      ["BL-044", "P4", "No tests and no lint step."],
+      ["BL-066", "P4", "Container logs are not mounted out and vanish when a container is recreated."],
+    ],
+  },
+  Z: {
+    name: "Demo dashboard", x: 33, y: 8, w: 2, d: 2, h: 1,
+    sub: "the final-presentation app",
+    what: [
+      "Nine sections walk through the results, and a live section replays a real alert through the real model.",
+      "It is local only and never deployed.",
+    ],
+    built: [
+      "`demo-dashboard/`: a FastAPI backend on port 8090 and a Vite frontend on 5173.",
+      "`static_export.py` re-scores `artifacts/runs/*/triage_verdicts.jsonl` through the project's own `score_verdicts.py`.",
+      "The live section calls `MemoryLayer`, `triage_prompt` and `llm_client` directly, against an isolated copy of the memory stores.",
+    ],
+    cond: [
+      ["BL-167", "P1", "Live retrieval searches the end-of-run store, so a demo alert retrieves its own stored verdict and later cases."],
+      ["BL-192", "P1", "The \"One Alert's Journey\" worked example is not real data, though the page says it is."],
+      ["BL-163", "P2", "The live Gemma Arm A call cannot succeed: a 25 s timeout against about 49 s needed."],
+      ["BL-164", "P2", "It needs gpt-oss-20b artifacts that exist on one machine only."],
+      ["BL-166", "P4", "It sits outside the repository map and departs from its hard rules."],
+    ],
+  },
+
+  J: {
+    name: "Controller", x: 12, y: 12.5, w: 2, d: 2, h: 0.7,
+    sub: "a guided walk through the whole thing",
+    what: [
+      "Asks how many flows to generate, generates them, runs them through the detector, then produces a report.",
+    ],
+    built: [
+      "`python -m memsoc.controller`, or `docker compose -f deploy/docker-compose.yml --profile workflow run --rm controller`.",
+      "It reimplements nothing: each step runs the same module the rest of the system uses.",
+      "Compose also defines one-shot `paths`, `generate` and `tests` services behind the `tools` profile.",
+    ],
+    cond: [
+      ["BL-042", "P3", "No CI: tests run only when somebody remembers."],
+      ["BL-041", "P3", "Stream mode was not exercised after the restructure."],
+      ["BL-060", "P3", "No `pyproject.toml`; the package imports only because `PYTHONPATH=src` is set."],
+    ],
+  },
+  Y: {
+    name: "paths.py", x: 0, y: 13.5, w: 1.5, d: 1.5, h: 0.4,
+    sub: "one file that knows where everything lives",
+    what: [
+      "The dataset, the models and every output folder are named here once. Nothing else in the code may hardcode a path.",
+    ],
+    built: [
+      "`src/memsoc/paths.py`. Anchored to the repo root; every value can be overridden by a `MEMSOC_*` environment variable.",
+      "All runtime output resolves under `artifacts/`.",
+    ],
+    cond: [
+      ["BL-027", "P1", "`run_training.py` bypasses it with a hardcoded path."],
+    ],
+  },
+};
+
+/* from, to, optional waypoints [x,y], flags */
+const EDGES = [
+  ["D", "G"], ["G", "L"], ["L", "C"], ["C", "T"], ["T", "P"], ["P", "M"], ["M", "V"],
+  ["T", "S", null, "mem"], ["S", "X", null, "mem"], ["X", "E", null, "mem"], ["E", "R", null, "mem"],
+  ["R", "Q", [[24, 4]], "mem"], ["R", "P", null, "mem"],
+  ["V", "W", null, "mem"], ["W", "Q", [[28, 2]], "mem"],
+  ["G", "O", null, "dash"], ["O", "K", [[4, 16.2], [28, 16.2]], "dash"], ["V", "K"], ["N", "K", null, "dash"],
+  ["H", "T", null, "dash"], ["J", "C", null, "dash"],
+  ["C", "A"], ["A", "B"], ["B", "I"], ["I", "U"],
+  ["V", "Z"],
+];
+
+const GROUND_TEXT = [
+  [-1, 10.4, "LAYER 1 · STREAM"],
+  [6.4, 10.8, "LAYER 2 · DETECTION"],
+  [18.6, 10.4, "LAYER 4 · LLM TRIAGE"],
+  [19, 17.4, "MEASUREMENT"],
+  [3, 2.8, "REPORTING"],
+];
+
+const ARMS = {
+  off: { label: "Arm A", recall: "74.5%", family: "54.5%", benign: "63 of 100" },
+  self: { label: "B-self", recall: "86.7%", family: "23.6%", benign: "98 of 100" },
+  oracle: { label: "B-oracle", recall: "98.8%", family: "69.1%", benign: "not run" },
+};
+
+function steps(arm) {
+  const head = [
+    { p: [[0, 8], [4, 8]], n: ["D", "G"], t: "A sample of held-out flows is drawn from the dataset. Seed 42, so the order is always the same." },
+    { p: [[4, 8], [8, 8]], n: ["G", "L"], t: "Each flow is posted to the detector at POST /api/logs." },
+    { p: [[8, 8], [12, 8]], n: ["L", "C"], t: "The frozen detector answers with a label, a score and its top SHAP features. Live capture saves the answer." },
+    { p: [[12, 8], [16, 8]], n: ["C", "T"], t: "The triage runner picks up each alert the detector flagged." },
+  ];
+  const call = [
+    { p: [[20, 8], [24, 8]], n: ["P", "M"], t: "The LLM is called once, at temperature 0." },
+    { p: [[24, 8], [28, 8]], n: ["M", "V"], t: "It returns a verdict, an attack family, a confidence and a rationale. One line is logged." },
+  ];
+  const score = { p: [[28, 8], [28, 13.5]], n: ["V", "K", "O"], t: "After the run, the scoring harness marks the verdicts against the held-out ground truth." };
+
+  if (arm === "off") {
+    return head.concat(
+      [{ p: [[16, 8], [20, 8]], n: ["T", "P"], t: "Memory is off. The prompt is built with no precedent block." }],
+      call,
+      [{ p: [[28, 8], [28, 8]], n: ["V"], t: "Nothing is written back. The off switch is an object that does nothing, so Arm A cannot touch the store." }],
+      [score]);
+  }
+  const write = arm === "oracle"
+    ? "The case is written back, but the true label replaces the model's verdict. That makes this arm a ceiling, not a deployable system."
+    : "The case is written back with the model's own verdict, right or wrong. A mistake stored here can be copied by later alerts.";
+  return head.concat(
+    [
+      { p: [[16, 8], [16, 4], [16, 1], [20, 1]], n: ["T", "S", "X", "E"], t: "Memory is on. The alert is rendered as case text and turned into a vector of 384 numbers." },
+      { p: [[20, 1], [20, 4], [24, 4], [24, 2]], n: ["E", "R", "Q"], t: "The read path searches the case store for the 3 most similar earlier cases." },
+      { p: [[24, 2], [24, 4], [20, 4], [20, 8]], n: ["Q", "R", "P"], t: "Those cases are pasted into the prompt as precedent. The rest of the prompt is the same in every arm." },
+    ],
+    call,
+    [{ p: [[28, 8], [28, 4], [28, 2], [24, 2]], n: ["V", "W", "Q"], t: write }],
+    [score]);
+}
+
+/* ------------------------------------------------------------------
+   Panel
+   ------------------------------------------------------------------ */
+
+const state = { arm: "self", sel: null, tab: "what", step: -1, playing: false };
+
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const fmt = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<mark>$1</mark>");
+const paras = (list) => list.map((p) => `<p>${fmt(p)}</p>`).join("");
+
+function overview() {
+  const on = (a) => (state.arm === a ? ' class="col-on"' : "");
+  return `
+    <span class="lbl">MemSOC · as of 2026-11-15</span>
+    <h1>The Triage Loop and Its One Switch</h1>
+    <p class="sub">how an alert gets raised, judged, remembered and marked</p>
+
+    <h3>What this is</h3>
+    ${paras([
+      "This repository is a security alert triage system that **tests one idea**: does an LLM judge alerts better when it can look up how similar alerts were judged before?",
+      "A detector raises alerts. An LLM gives each one a verdict. In Arm B, a memory layer shows the LLM the three most similar past cases first, then stores the new case. In Arm A that layer is switched off. **Everything else is identical**, so any difference comes from memory.",
+      "The diagram is the path of one alert. The solid line from Dataset to Verdict log is the main path. The blocks in the accent colour, inside the dashed outline, are the memory layer. Ground truth and the scoring harness do the marking afterwards, and the branch off Live capture produces the report.",
+    ])}
+
+    <h3>What it found</h3>
+    <table>
+      <thead><tr><th></th><th${on("off")}>Arm A</th><th${on("self")}>B-self</th><th${on("oracle")}>B-oracle</th></tr></thead>
+      <tbody>
+        <tr><td>Attacks caught</td><td${on("off")}>74.5%</td><td${on("self")}>86.7%</td><td${on("oracle")}>98.8%</td></tr>
+        <tr><td>Family named right</td><td${on("off")}>54.5%</td><td${on("self")}>23.6%</td><td${on("oracle")}>69.1%</td></tr>
+        <tr><td>Harmless flows escalated</td><td${on("off")}>63 / 100</td><td${on("self")}>98 / 100</td><td${on("oracle")}>not run</td></tr>
+        <tr><td>Seconds per alert</td><td${on("off")}>40.4</td><td${on("self")}>21.5</td><td${on("oracle")}>27.1</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Gemma 4 26B, temperature 0. The first two rows and the timing are the same 165 attack alerts in every arm (protocol v3). The third row is 100 hard benign flows (protocol v4). One run per condition.</p>
+    ${paras([
+      "**Memory changes the decisions a lot, and what is stored decides whether that helps.** The model largely copies the attack family of the cases it is shown: 97.6% of the time for Gemma.",
+      "With true labels in memory (B-oracle) it helps. With the model's own unchecked verdicts (B-self) one mistake spreads: every one of the 143 attacks B-self caught was labelled Fuzzers.",
+    ])}
+
+    <h3>Five follow-up tests · protocol v4</h3>
+    <ol>
+      <li><span>${fmt("**Shuffled labels.** Family accuracy fell from 69.1% to 47.3%, below no memory. Correct labels are what make B-oracle work.")}</span></li>
+      <li><span>${fmt("**No family stored.** Family accuracy recovered, 23.6% to 57.6%, but recall fell to 70.3%.")}</span></li>
+      <li><span>${fmt("**Hard benign, no memory.** 63 of 100 harmless flows escalated.")}</span></li>
+      <li><span>${fmt("**Hard benign, memory full of attacks.** 98 of 100 escalated. The clearest harm found.")}</span></li>
+      <li><span>${fmt("**Reversed order.** The family harm stayed (29.7%). The recall gain did not: 66.1%, below Arm A. So that gain is not robust.")}</span></li>
+    </ol>
+
+    <h3>State of the build</h3>
+    ${paras([
+      "Phases 0 to 4 are marked done in the README: setup, the baseline, the memory arm, tuning and evaluation. **Phase 5, the reporting layer, is in progress**: the technical report exists, the plain-language view does not (BL-008).",
+      "The backlog holds 174 rows: 54 done, 116 open, 3 in progress, 1 blocked. Several rows from earlier phases are still open there, including the explicit error-propagation test (BL-004). The number beside each component on the left is how many open rows are listed for it here.",
+      "Three services run by default: detection on port 8000, reports on 8001, and the dashboard and API gateway on 8080.",
+    ])}
+
+    <h3>How to read it</h3>
+    ${paras([
+      "Pick an **arm** in the top bar to see the layer switch on and off. **Run the flow** walks one alert through the loop; **Trace one step** moves it a step at a time.",
+      "Click a block for a plain description. **How it's built** gives the files and settings, **Inside** lists its steps in order, and **Condition** lists what the backlog says is still wrong with it.",
+      "The view is 3D: **drag to orbit**, shift-drag or right-drag to pan, scroll to zoom. The bar under the diagram has preset views, auto-rotate, name tags, flow speed, block height and three colour themes.",
+    ])}
+
+    <h3>Sources</h3>
+    <p class="note">${fmt("`README.md`, `PROJECT_BRIEF.md`, `docs/results-of-5-tests/README.md`, `docs/status/executive-summary.md`, `docs/PRODUCT_BACKLOG.md`, and the module docstrings under `src/memsoc/`. Figures were typed in by hand and are not read live (BL-198).")}</p>`;
+}
+
+function renderPanel() {
+  const tabs = $("tabs"), panel = $("panel");
+  if (!state.sel) {
+    tabs.classList.add("hidden");
+    panel.innerHTML = overview();
+    panel.scrollTop = 0;
+    return;
+  }
+  const n = NODES[state.sel];
+  tabs.classList.remove("hidden");
+  tabs.querySelectorAll("button").forEach((b) => {
+    b.setAttribute("aria-selected", b.dataset.tab === state.tab);
+    if (b.dataset.tab === "cond") b.textContent = `Condition · ${n.cond.length}`;
+  });
+  let body = "";
+  if (state.tab === "what") body = `<h3>What it does</h3>${paras(n.what)}`;
+  if (state.tab === "built") body = `<h3>How it's built</h3>${paras(n.built)}`;
+  if (state.tab === "inside") {
+    body = "<h3>Its steps, in order</h3>" + (n.inside
+      ? `<ol>${n.inside.map((s) => `<li><span>${fmt(s)}</span></li>`).join("")}</ol>`
+      : '<p class="note">Nothing to step through here. See the other tabs.</p>');
+  }
+  if (state.tab === "cond") {
+    body = "<h3>Open in the backlog</h3>" + n.cond.map((c) =>
+      `<div class="bl"><span class="id">${c[0]}<i>${c[1]}</i></span><span>${fmt(c[2])}</span></div>`).join("") +
+      '<p class="note" style="margin-top:12px">A selection of open rows from <code>docs/PRODUCT_BACKLOG.md</code>, shortened. The backlog is the authority.</p>';
+  }
+  panel.innerHTML = `
+    <button class="back" id="back">← Overview</button><br>
+    <span class="lbl">${state.sel} · ${n.mem ? "memory layer" : "component"}</span>
+    <h1>${n.name}</h1>
+    <p class="sub">${fmt(n.sub)}</p>
+    ${body}`;
+  $("back").onclick = () => select(null);
+  panel.scrollTop = 0;
+}
+
+function select(id, tab) {
+  state.sel = id;
+  state.tab = tab || "what";
+  document.querySelectorAll(".row").forEach((r) => r.classList.toggle("sel", r.dataset.id === id));
+  renderPanel();
+}
+
+/* ------------------------------------------------------------------
+   Themes
+   ------------------------------------------------------------------ */
+
+const PALETTES = {
+  midnight: {
+    ui: { bg: "#0a0f1f", bg2: "#10172e", ink: "#e9eeff", mute: "#8e99c4", rule: "#252f58", accent: "#ff7aa8", hi: "#62e8ff", onhi: "#04141b", chip: "rgba(150,170,255,0.14)" },
+    sky: ["#070b18", "#15214a"], halo: "rgba(90,120,255,0.24)", grid: "rgba(140,165,255,0.13)",
+    blockLo: "#17234d", blockHi: "#6f95f2", blockLine: "rgba(205,220,255,0.5)",
+    memLo: "#4a1634", memHi: "#ff88b0", memLine: "rgba(255,210,225,0.65)",
+    edge: "#86a6ff", shadow: "rgba(0,0,12,0.26)", letter: "#081028", labelBg: "rgba(10,15,31,0.74)", glow: true,
+  },
+  aurora: {
+    ui: { bg: "#061417", bg2: "#0b1f23", ink: "#e4fbf5", mute: "#7fa9a3", rule: "#1c3d40", accent: "#ffb65c", hi: "#b6ff6e", onhi: "#0c1a05", chip: "rgba(120,230,210,0.13)" },
+    sky: ["#041013", "#10363b"], halo: "rgba(60,220,190,0.2)", grid: "rgba(120,230,210,0.12)",
+    blockLo: "#0f3a40", blockHi: "#4fd0c1", blockLine: "rgba(205,255,246,0.5)",
+    memLo: "#4d3210", memHi: "#ffc476", memLine: "rgba(255,234,195,0.7)",
+    edge: "#6fe0d0", shadow: "rgba(0,8,8,0.3)", letter: "#04201f", labelBg: "rgba(6,20,23,0.74)", glow: true,
+  },
+  paper: {
+    ui: { bg: "#d2c79c", bg2: "#dbd1aa", ink: "#1d1b12", mute: "#6a6446", rule: "#a59c74", accent: "#9c3a17", hi: "#17626b", onhi: "#f4eed6", chip: "rgba(29,27,18,0.09)" },
+    sky: ["#dcd3ab", "#c3b787"], halo: "rgba(255,250,228,0.4)", grid: "rgba(29,27,18,0.14)",
+    blockLo: "#9a8d5e", blockHi: "#eee6c2", blockLine: "rgba(29,27,18,0.85)",
+    memLo: "#8a4a2c", memHi: "#f2c8ab", memLine: "rgba(120,40,12,0.9)",
+    edge: "#1d1b12", shadow: "rgba(40,34,10,0.16)", letter: "#1d1b12", labelBg: "rgba(219,209,170,0.82)", glow: false,
+  },
+};
+
+let P = PALETTES.midnight;
+
+const rgb = (hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+const mix = (a, b, t) => {
+  const A = rgb(a), B = rgb(b);
+  t = Math.max(0, Math.min(1, t));
+  return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
+};
+
+function setPalette(name) {
+  if (!PALETTES[name]) name = "midnight";
+  P = PALETTES[name];
+  view.palette = name;
+  const s = document.documentElement.style;
+  for (const k in P.ui) s.setProperty("--" + k, P.ui[k]);
+  document.querySelectorAll(".sw").forEach((b) => b.setAttribute("aria-pressed", b.dataset.pal === name));
+  try { localStorage.setItem("memsoc-map-theme", name); } catch (e) { /* storage blocked: theme just is not remembered */ }
+}
+
+/* ------------------------------------------------------------------
+   3D engine: orbit camera, perspective projection, depth-sorted boxes.
+   World axes: X = grid x, Y = -grid y, Z = up.
+   ------------------------------------------------------------------ */
+
+const cv = $("cv"), ctx = cv.getContext("2d");
+const VFOV = 30 * Math.PI / 180;
+const HOME_YAW = -Math.PI / 4, HOME_PITCH = 0.6, CENTRE = [16.5, -7.5];
+const LIGHT = (() => { const v = [0.45, -0.55, 0.7], l = Math.hypot(...v); return v.map((c) => c / l); })();
+const STILL = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let W = 1, H = 1, DPR = 1, F = 1;
+const cam = { yaw: HOME_YAW, pitch: HOME_PITCH, dist: 60, tx: CENTRE[0], ty: CENTRE[1] };
+const view = { rotate: false, labels: true, speed: 1, lift: 1, palette: "midnight" };
+let camPos = [0, 0, 0], bR = [0, 0, 0], bU = [0, 0, 0], bF = [0, 0, 0];
+let tween = null, hoverId = null, clock = 0;
+
+const UNITS = Object.keys(NODES).map((id) => {
+  const n = NODES[id];
+  return { id, n, x0: n.x - n.w / 2, x1: n.x + n.w / 2, y0: -(n.y + n.d / 2), y1: -(n.y - n.d / 2), polys: [] };
+});
+const UNIT = Object.fromEntries(UNITS.map((u) => [u.id, u]));
+
+const EDGE_PATHS = EDGES.map(([a, b, via, flag]) => {
+  const A = NODES[a], B = NODES[b];
+  const path = [[A.x, A.y]].concat(via || [], [[B.x, B.y]]);
+  const prev = path[path.length - 2];
+  let ex = B.x, ey = B.y;
+  if (Math.abs(prev[1] - B.y) < 0.01) ex = B.x - Math.sign(B.x - prev[0]) * (B.w / 2);
+  else ey = B.y - Math.sign(B.y - prev[1]) * (B.d / 2);
+  return { path, flag, end: [ex, ey] };
+});
+
+function fitDist() {
+  const tv = Math.tan(VFOV / 2);
+  return Math.max(21 / ((W / H) * tv), 15.5 / tv);
+}
+
+const VIEWS = {
+  iso: () => ({ yaw: HOME_YAW, pitch: HOME_PITCH, dist: fitDist(), tx: CENTRE[0], ty: CENTRE[1] }),
+  top: () => ({ yaw: -Math.PI / 2, pitch: 1.52, dist: fitDist() * 0.98, tx: CENTRE[0], ty: CENTRE[1] }),
+  front: () => ({ yaw: -Math.PI / 2, pitch: 0.3, dist: fitDist() * 0.92, tx: CENTRE[0], ty: CENTRE[1] }),
+  memory: () => ({ yaw: -1.05, pitch: 0.72, dist: fitDist() * 0.5, tx: 22, ty: -2.6 }),
+};
+
+function flyTo(goal, ms) {
+  if (STILL) { Object.assign(cam, goal); tween = null; return; }
+  const from = Object.assign({}, cam);
+  /* take the short way round */
+  let dy = (goal.yaw - from.yaw) % (Math.PI * 2);
+  if (dy > Math.PI) dy -= Math.PI * 2;
+  if (dy < -Math.PI) dy += Math.PI * 2;
+  tween = { from, to: Object.assign({}, goal, { yaw: from.yaw + dy }), t0: performance.now(), ms: ms || 800 };
+}
+
+function updateCamera() {
+  const cY = Math.cos(cam.yaw), sY = Math.sin(cam.yaw), cP = Math.cos(cam.pitch), sP = Math.sin(cam.pitch);
+  camPos = [cam.tx + cam.dist * cP * cY, cam.ty + cam.dist * cP * sY, cam.dist * sP];
+  bF = [-cP * cY, -cP * sY, -sP];
+  bR = [-sY, cY, 0];
+  bU = [-sP * cY, -sP * sY, cP];
+}
+
+/* world point -> camera space */
+function toCam(x, y, z) {
+  const dx = x - camPos[0], dy = y - camPos[1], dz = z - camPos[2];
+  return [dx * bR[0] + dy * bR[1], dx * bU[0] + dy * bU[1] + dz * bU[2], dx * bF[0] + dy * bF[1] + dz * bF[2]];
+}
+const NEAR = 0.8;
+/* the picture sits a little above centre, clear of the control bar */
+const toScreen = (c) => [W / 2 + F * c[0] / c[2], H / 2 - 34 - F * c[1] / c[2], c[2]];
+function proj(x, y, z) {
+  const c = toCam(x, y, z);
+  return c[2] < NEAR ? null : toScreen(c);
+}
+/* grid coordinates (y pointing "down the page"), z already in world units */
+const gp = (gx, gy, z) => proj(gx, -gy, z || 0);
+
+/* a ground segment, clipped against the near plane */
+function gseg(ax, ay, bx, by) {
+  let a = toCam(ax, -ay, 0), b = toCam(bx, -by, 0);
+  if (a[2] < NEAR && b[2] < NEAR) return null;
+  if (a[2] < NEAR || b[2] < NEAR) {
+    const t = (NEAR - a[2]) / (b[2] - a[2]);
+    const m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, NEAR];
+    if (a[2] < NEAR) a = m; else b = m;
+  }
+  return [toScreen(a), toScreen(b)];
+}
+
+function poly(points) {
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+  ctx.closePath();
+}
+
+function strokeGround(path) {
+  ctx.beginPath();
+  for (let i = 1; i < path.length; i++) {
+    const s = gseg(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1]);
+    if (!s) continue;
+    ctx.moveTo(s[0][0], s[0][1]);
+    ctx.lineTo(s[1][0], s[1][1]);
+  }
+  ctx.stroke();
+}
+
+/* Back-to-front order. Two boxes that do not overlap are separated by an
+   axis-aligned plane; the one on the camera's side of it is nearer and must
+   be drawn later. Those pairwise rules are sorted topologically. */
+function drawOrder() {
+  const n = UNITS.length, after = UNITS.map(() => []), indeg = new Array(n).fill(0);
+  const nearer = (A, B) => {
+    if (A.x1 <= B.x0 && camPos[0] <= A.x1) return true;
+    if (A.x0 >= B.x1 && camPos[0] >= A.x0) return true;
+    if (A.y1 <= B.y0 && camPos[1] <= A.y1) return true;
+    if (A.y0 >= B.y1 && camPos[1] >= A.y0) return true;
+    return false;
+  };
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const a = nearer(UNITS[i], UNITS[j]), b = nearer(UNITS[j], UNITS[i]);
+    if (a && !b) { after[j].push(i); indeg[i]++; }
+    else if (b && !a) { after[i].push(j); indeg[j]++; }
+  }
+  const far = UNITS.map((u) => -Math.hypot((u.x0 + u.x1) / 2 - camPos[0], (u.y0 + u.y1) / 2 - camPos[1]));
+  const out = [], done = new Array(n).fill(false);
+  while (out.length < n) {
+    let pick = -1;
+    for (let i = 0; i < n; i++) if (!done[i] && indeg[i] === 0 && (pick < 0 || far[i] < far[pick])) pick = i;
+    if (pick < 0) for (let i = 0; i < n; i++) if (!done[i] && (pick < 0 || far[i] < far[pick])) pick = i;
+    done[pick] = true;
+    out.push(UNITS[pick]);
+    after[pick].forEach((k) => indeg[k]--);
+  }
+  return out;
+}
+
+function drawUnit(u) {
+  const n = u.n;
+  const ghost = n.mem && state.arm === "off";
+  const act = flow.active.has(u.id), sel = state.sel === u.id, hov = hoverId === u.id;
+  const lo = n.mem ? P.memLo : P.blockLo, hi = n.mem ? P.memHi : P.blockHi;
+  const slabs = n.slabs || 1, total = n.h * view.lift, each = total / slabs;
+  const shade = (t) => mix(lo, hi, t + (hov ? 0.1 : 0));
+  u.polys = [];
+
+  ctx.lineJoin = "round";
+  ctx.lineWidth = (act || sel || hov) ? 1.8 : 1;
+  ctx.strokeStyle = act ? P.ui.hi : (n.mem ? P.memLine : P.blockLine);
+  ctx.setLineDash(ghost ? [3, 3] : []);
+
+  for (let i = 0; i < slabs; i++) {
+    const z0 = i * each, z1 = slabs > 1 ? z0 + each * 0.72 : total;
+    const sides = [];
+    if (camPos[0] > u.x1) sides.push([[1, 0], [[u.x1, u.y0], [u.x1, u.y1]]]);
+    if (camPos[0] < u.x0) sides.push([[-1, 0], [[u.x0, u.y1], [u.x0, u.y0]]]);
+    if (camPos[1] > u.y1) sides.push([[0, 1], [[u.x1, u.y1], [u.x0, u.y1]]]);
+    if (camPos[1] < u.y0) sides.push([[0, -1], [[u.x0, u.y0], [u.x1, u.y0]]]);
+
+    sides.forEach(([nrm, e]) => {
+      const q = [proj(e[0][0], e[0][1], z1), proj(e[1][0], e[1][1], z1), proj(e[1][0], e[1][1], z0), proj(e[0][0], e[0][1], z0)];
+      if (q.includes(null)) return;
+      const t = 0.16 + 0.5 * Math.max(0, nrm[0] * LIGHT[0] + nrm[1] * LIGHT[1]);
+      const g = ctx.createLinearGradient((q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2, (q[2][0] + q[3][0]) / 2, (q[2][1] + q[3][1]) / 2);
+      g.addColorStop(0, shade(t + 0.1));
+      g.addColorStop(1, shade(t - 0.1));
+      poly(q);
+      ctx.globalAlpha = ghost ? 0.12 : 1;
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.globalAlpha = ghost ? 0.5 : 1;
+      ctx.stroke();
+      u.polys.push(q);
+    });
+
+    if (camPos[2] > z1) {
+      const q = [proj(u.x0, u.y0, z1), proj(u.x1, u.y0, z1), proj(u.x1, u.y1, z1), proj(u.x0, u.y1, z1)];
+      if (!q.includes(null)) {
+        const top = i === slabs - 1;
+        poly(q);
+        ctx.globalAlpha = ghost ? 0.12 : 1;
+        ctx.fillStyle = top && act ? P.ui.hi : top && sel ? P.ui.ink : shade(0.94);
+        if (top && act && P.glow) { ctx.shadowColor = P.ui.hi; ctx.shadowBlur = 22; }
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = ghost ? 0.5 : 1;
+        ctx.stroke();
+        u.polys.push(q);
+        if (top) {
+          const c = proj((u.x0 + u.x1) / 2, (u.y0 + u.y1) / 2, z1);
+          const size = Math.max(8, Math.min(24, F * 0.8 / c[2]));
+          ctx.font = `700 ${size.toFixed(1)}px ${MONO}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = act ? P.ui.onhi : sel ? P.ui.bg : ghost ? P.ui.accent : P.letter;
+          ctx.fillText(u.id, c[0], c[1] + 0.5);
+        }
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([]);
+}
+
+const MONO = '"JetBrains Mono", "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace';
+
+/* text painted on the floor: an affine fit to the perspective at that spot */
+function groundText(gx, gy, text, colour) {
+  const o = gp(gx, gy), ex = gp(gx + 1, gy), ey = gp(gx, gy + 1);
+  if (!o || !ex || !ey) return;
+  const k = 0.62 / 20; /* 20px font drawn 0.62 grid units tall */
+  ctx.save();
+  ctx.transform((ex[0] - o[0]) * k, (ex[1] - o[1]) * k, (ey[0] - o[0]) * k, (ey[1] - o[1]) * k, o[0], o[1]);
+  ctx.font = `600 20px ${MONO}`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = colour;
+  let x = 0;
+  for (const ch of text) { ctx.fillText(ch, x, 0); x += ctx.measureText(ch).width + 5; }
+  ctx.restore();
+}
+
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  /* backdrop */
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, P.sky[0]);
+  sky.addColorStop(1, P.sky[1]);
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+  const halo = ctx.createRadialGradient(W / 2, H * 0.52, 0, W / 2, H * 0.52, Math.max(W, H) * 0.6);
+  halo.addColorStop(0, P.halo);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, W, H);
+
+  /* floor grid */
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = P.grid;
+  ctx.beginPath();
+  const line = (ax, ay, bx, by) => {
+    const s = gseg(ax, ay, bx, by);
+    if (s) { ctx.moveTo(s[0][0], s[0][1]); ctx.lineTo(s[1][0], s[1][1]); }
+  };
+  for (let x = -6; x <= 40; x += 2) line(x, -6, x, 22);
+  for (let y = -6; y <= 22; y += 2) line(-6, y, 40, y);
+  ctx.stroke();
+
+  /* the memory region */
+  const off = state.arm === "off";
+  const reg = [gp(14.6, -0.8), gp(29.6, -0.8), gp(29.6, 5.7), gp(14.6, 5.7)];
+  if (!reg.includes(null)) {
+    poly(reg);
+    ctx.globalAlpha = off ? 0.04 : 0.1;
+    ctx.fillStyle = P.ui.accent;
+    ctx.fill();
+    ctx.globalAlpha = off ? 0.35 : 0.9;
+    ctx.strokeStyle = P.ui.accent;
+    ctx.setLineDash([7, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+  ctx.globalAlpha = 0.75;
+  GROUND_TEXT.forEach((g) => groundText(g[0], g[1], g[2], P.ui.mute));
+  ctx.globalAlpha = off ? 0.5 : 1;
+  groundText(14.8, -1.2, off ? "LAYER 3 · MEMORY — SWITCHED OFF IN ARM A" : "LAYER 3 · MEMORY — THE ONE VARIABLE", P.ui.accent);
+  ctx.globalAlpha = 1;
+
+  /* soft contact shadows */
+  ctx.fillStyle = P.shadow;
+  UNITS.forEach((u) => {
+    if (u.n.mem && off) return;
+    [0.45, 0.2].forEach((m) => {
+      const q = [proj(u.x0 - m, u.y0 - m, 0), proj(u.x1 + m, u.y0 - m, 0), proj(u.x1 + m, u.y1 + m, 0), proj(u.x0 - m, u.y1 + m, 0)];
+      if (!q.includes(null)) { poly(q); ctx.fill(); }
+    });
+  });
+
+  /* connections on the floor */
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  EDGE_PATHS.forEach((e) => {
+    const mem = e.flag === "mem", dash = e.flag === "dash";
+    const colour = mem ? P.ui.accent : P.edge;
+    const dim = mem && off;
+    ctx.strokeStyle = colour;
+    ctx.globalAlpha = dim ? 0.18 : dash ? 0.5 : 0.4;
+    ctx.lineWidth = dash ? 1.2 : 2;
+    ctx.setLineDash(dash ? [4, 5] : []);
+    strokeGround(e.path);
+    if (!dash && !dim) {
+      /* marching dashes show which way things move */
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 11]);
+      ctx.lineDashOffset = -clock * 26 * view.speed;
+      if (P.glow) { ctx.shadowColor = colour; ctx.shadowBlur = 7; }
+      strokeGround(e.path);
+      ctx.shadowBlur = 0;
+      ctx.lineDashOffset = 0;
+    }
+    ctx.setLineDash([]);
+    const d = gp(e.end[0], e.end[1]);
+    if (d) {
+      ctx.globalAlpha = dim ? 0.25 : 1;
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.arc(d[0], d[1], Math.max(2, Math.min(5, F * 0.16 / d[2])), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  });
+
+  /* the flow's current leg */
+  if (flow.path) {
+    ctx.strokeStyle = P.ui.hi;
+    ctx.lineWidth = 4;
+    if (P.glow) { ctx.shadowColor = P.ui.hi; ctx.shadowBlur = 16; }
+    strokeGround(flow.path);
+    ctx.shadowBlur = 0;
+  }
+
+  /* blocks */
+  const order = drawOrder();
+  order.forEach(drawUnit);
+  drawnOrder = order;
+
+  /* the travelling alert */
+  if (flow.path) {
+    const g = flowPoint();
+    const p = gp(g[0], g[1], 0.45);
+    if (p) {
+      const r = Math.max(5, Math.min(13, F * 0.34 / p[2]));
+      const glow = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 4);
+      glow.addColorStop(0, P.ui.hi);
+      glow.addColorStop(0.25, P.ui.hi);
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], r * 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = P.ui.hi;
+      ctx.strokeStyle = P.ui.bg;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  /* name tags */
+  if (view.labels) {
+    ctx.font = `600 10px ${MONO}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    order.forEach((u) => {
+      const p = proj((u.x0 + u.x1) / 2, (u.y0 + u.y1) / 2, u.n.h * view.lift);
+      if (!p) return;
+      p[1] -= Math.max(17, F * 1.05 / p[2]);
+      const text = u.n.name.toUpperCase();
+      const w = ctx.measureText(text).width + 12;
+      const ghost = u.n.mem && off;
+      const hot = flow.active.has(u.id) || state.sel === u.id || hoverId === u.id;
+      ctx.globalAlpha = ghost ? 0.45 : 1;
+      ctx.fillStyle = hot ? P.ui.hi : P.labelBg;
+      ctx.beginPath();
+      ctx.roundRect(p[0] - w / 2, p[1] - 8, w, 16, 8);
+      ctx.fill();
+      ctx.fillStyle = hot ? P.ui.onhi : u.n.mem ? P.ui.accent : P.ui.ink;
+      ctx.fillText(text, p[0], p[1] + 0.5);
+    });
+    ctx.globalAlpha = 1;
+  }
+}
+
+let drawnOrder = UNITS;
+
+function pick(x, y) {
+  for (let i = drawnOrder.length - 1; i >= 0; i--) {
+    const u = drawnOrder[i];
+    for (const q of u.polys) {
+      let inside = false;
+      for (let a = 0, b = q.length - 1; a < q.length; b = a++) {
+        if ((q[a][1] > y) !== (q[b][1] > y) && x < (q[b][0] - q[a][0]) * (y - q[a][1]) / (q[b][1] - q[a][1]) + q[a][0]) inside = !inside;
+      }
+      if (inside) return u.id;
+    }
+  }
+  return null;
+}
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const wasHome = Math.abs(cam.dist - (W > 1 ? fitDist() : cam.dist)) < 0.01;
+  W = Math.max(1, r.width);
+  H = Math.max(1, r.height);
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(W * DPR);
+  cv.height = Math.round(H * DPR);
+  F = (H / 2) / Math.tan(VFOV / 2);
+  if (wasHome && !tween) cam.dist = fitDist();
+}
+
+let lastFrame = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000 || 0);
+  lastFrame = now;
+  if (!STILL) clock += dt;
+
+  if (tween) {
+    let t = Math.min(1, (now - tween.t0) / tween.ms);
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    for (const k in tween.to) cam[k] = tween.from[k] + (tween.to[k] - tween.from[k]) * e;
+    if (t >= 1) tween = null;
+  } else if (view.rotate && !ptrs.size) {
+    cam.yaw += dt * 0.12;
+  }
+
+  flowTick(now);
+  updateCamera();
+  draw();
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------
+   Pointer controls: orbit, pan, zoom, pick
+   ------------------------------------------------------------------ */
+
+const ptrs = new Map();
+let mode = null, moved = false, startXY = null, pinch = null;
+const clampCam = () => {
+  cam.pitch = Math.max(0.14, Math.min(1.54, cam.pitch));
+  cam.dist = Math.max(9, Math.min(240, cam.dist));
+};
+const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+
+function zoomBy(factor) { tween = null; cam.dist *= factor; clampCam(); }
+
+cv.addEventListener("pointerdown", (e) => {
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptrs.size === 1) {
+    mode = (e.button === 2 || e.button === 1 || e.shiftKey) ? "pan" : "orbit";
+    moved = false;
+    startXY = [e.clientX, e.clientY];
+  } else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), dist: cam.dist };
+    moved = true;
+  }
+  $("tip").style.display = "none";
+});
+
+cv.addEventListener("pointermove", (e) => {
+  if (!ptrs.has(e.pointerId)) {
+    /* not dragging: hover */
+    const [x, y] = local(e);
+    const id = pick(x, y);
+    hoverId = id;
+    cv.classList.toggle("over", !!id);
+    const tip = $("tip");
+    if (id) {
+      tip.innerHTML = `<b>${id} · ${NODES[id].name}</b>${esc(NODES[id].sub)}`;
+      tip.style.display = "block";
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - 312) + "px";
+      tip.style.top = e.clientY + 18 + "px";
+    } else tip.style.display = "none";
+    return;
+  }
+  const prev = ptrs.get(e.pointerId);
+  const dx = e.clientX - prev[0], dy = e.clientY - prev[1];
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+
+  if (ptrs.size === 2 && pinch) {
+    const [a, b] = [...ptrs.values()];
+    tween = null;
+    cam.dist = pinch.dist * pinch.d / Math.max(20, Math.hypot(a[0] - b[0], a[1] - b[1]));
+    clampCam();
+    return;
+  }
+  if (!moved && Math.hypot(e.clientX - startXY[0], e.clientY - startXY[1]) < 4) return;
+  moved = true;
+  tween = null;
+  cv.classList.add("dragging");
+  if (mode === "orbit") {
+    cam.yaw -= dx * 0.006;
+    cam.pitch += dy * 0.005;
+  } else {
+    const k = cam.dist / F, g = Math.hypot(bF[0], bF[1]) || 1;
+    cam.tx += -bR[0] * dx * k + (bF[0] / g) * dy * k * 1.4;
+    cam.ty += -bR[1] * dx * k + (bF[1] / g) * dy * k * 1.4;
+  }
+  clampCam();
+});
+
+const release = (e) => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  cv.classList.remove("dragging");
+  if (ptrs.size < 2) pinch = null;
+  if (ptrs.size === 0 && !moved && e.type === "pointerup") {
+    const [x, y] = local(e);
+    select(pick(x, y));
+  }
+};
+cv.addEventListener("pointerup", release);
+cv.addEventListener("pointercancel", release);
+cv.addEventListener("pointerleave", () => { hoverId = null; $("tip").style.display = "none"; });
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
+cv.addEventListener("dblclick", (e) => {
+  const [x, y] = local(e);
+  const id = pick(x, y);
+  if (id) select(id, "inside");
+});
+cv.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  zoomBy(e.deltaY < 0 ? 1 / 1.1 : 1.1);
+}, { passive: false });
+
+$("z-in").onclick = () => zoomBy(1 / 1.25);
+$("z-out").onclick = () => zoomBy(1.25);
+
+/* ------------------------------------------------------------------
+   Arms and the flow
+   ------------------------------------------------------------------ */
+
+const flow = { active: new Set(), path: null, seg: [], total: 0, t0: 0, dur: 1, t: 0, done: null, timer: 0 };
+
+function flowPoint() {
+  let dist = flow.t * flow.total, j = 0;
+  while (j < flow.seg.length - 1 && dist > flow.seg[j]) { dist -= flow.seg[j]; j++; }
+  const f = flow.seg[j] ? dist / flow.seg[j] : 0;
+  const a = flow.path[j], b = flow.path[j + 1] || a;
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+function flowTick(now) {
+  if (!flow.path || flow.t >= 1) return;
+  flow.t = STILL || flow.total === 0 ? 1 : Math.min(1, (now - flow.t0) / flow.dur);
+  if (flow.t >= 1 && flow.done) { const d = flow.done; flow.done = null; d(); }
+}
+
+function setArm(arm) {
+  state.arm = arm;
+  document.querySelectorAll(".arms .btn").forEach((b) => b.setAttribute("aria-pressed", b.dataset.arm === arm));
+  $("s-recall").textContent = ARMS[arm].recall;
+  $("s-family").textContent = ARMS[arm].family;
+  $("s-benign").textContent = ARMS[arm].benign;
+  stopFlow(true);
+  if (!state.sel) renderPanel();
+}
+
+function stopFlow(clear) {
+  clearTimeout(flow.timer);
+  flow.done = null;
+  state.playing = false;
+  $("b-run").textContent = "▶ Run the flow";
+  if (clear) {
+    state.step = -1;
+    flow.path = null;
+    flow.active = new Set();
+    $("caption").classList.remove("on");
+  }
+}
+
+function showStep(i, done) {
+  const list = steps(state.arm), s = list[i];
+  state.step = i;
+  flow.active = new Set(s.n);
+  flow.path = s.p;
+  flow.seg = [];
+  flow.total = 0;
+  for (let j = 1; j < s.p.length; j++) {
+    const len = Math.hypot(s.p[j][0] - s.p[j - 1][0], s.p[j][1] - s.p[j - 1][1]);
+    flow.seg.push(len);
+    flow.total += len;
+  }
+  if (!flow.seg.length) flow.seg.push(0);
+  flow.t = 0;
+  flow.t0 = performance.now();
+  flow.dur = (450 + flow.total * 95) / view.speed;
+  flow.done = done || null;
+  $("cap-n").textContent = `${ARMS[state.arm].label} · step ${String(i + 1).padStart(2, "0")} of ${String(list.length).padStart(2, "0")}`;
+  $("cap-t").textContent = s.t;
+  $("caption").classList.add("on");
+}
+
+const nextIndex = () => (state.step + 1) % steps(state.arm).length;
+
+function play() {
+  if (!state.playing) return;
+  showStep(nextIndex(), () => { flow.timer = setTimeout(play, 2400 / view.speed); });
+}
+
+$("b-run").onclick = () => {
+  if (state.playing) { stopFlow(false); return; }
+  state.playing = true;
+  $("b-run").textContent = "❚❚ Pause the flow";
+  play();
+};
+$("b-step").onclick = () => { stopFlow(false); showStep(nextIndex()); };
+$("b-reset").onclick = () => { stopFlow(true); flyTo(VIEWS.iso(), 700); };
+document.querySelectorAll(".arms .btn").forEach((b) => (b.onclick = () => setArm(b.dataset.arm)));
+
+/* ------------------------------------------------------------------
+   Dock, sidebar, keyboard
+   ------------------------------------------------------------------ */
+
+document.querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => flyTo(VIEWS[b.dataset.view](), 900)));
+$("t-rotate").onclick = () => { view.rotate = !view.rotate; $("t-rotate").setAttribute("aria-pressed", view.rotate); };
+$("t-labels").onclick = () => { view.labels = !view.labels; $("t-labels").setAttribute("aria-pressed", view.labels); };
+$("r-speed").oninput = (e) => { view.speed = +e.target.value; };
+$("r-lift").oninput = (e) => { view.lift = +e.target.value; };
+document.querySelectorAll(".sw").forEach((b) => (b.onclick = () => setPalette(b.dataset.pal)));
+
+const ORDER = GROUPS.flatMap((g) => g[1]);
+const nav = $("nav");
+GROUPS.forEach(([title, ids]) => {
+  const h = document.createElement("h2");
+  h.textContent = title;
+  nav.appendChild(h);
+  ids.forEach((id) => {
+    const n = NODES[id];
+    const b = document.createElement("button");
+    b.className = "row" + (n.mem ? " mem" : "");
+    b.dataset.id = id;
+    b.title = n.cond.length + " open backlog rows";
+    b.innerHTML = `<span class="k">${id}</span><span>${n.name}</span><span class="n">${n.cond.length}</span>`;
+    nav.appendChild(b);
+  });
+});
+nav.addEventListener("click", (e) => {
+  const r = e.target.closest(".row");
+  if (r) { select(r.dataset.id); focusNode(r.dataset.id); }
+});
+nav.addEventListener("pointerover", (e) => { const r = e.target.closest(".row"); hoverId = r ? r.dataset.id : null; });
+nav.addEventListener("pointerleave", () => { hoverId = null; });
+
+/* bring a block to the middle of the view without changing the angle */
+function focusNode(id) {
+  const n = NODES[id];
+  flyTo({ yaw: cam.yaw, pitch: cam.pitch, dist: Math.min(cam.dist, fitDist() * 0.75), tx: n.x, ty: -n.y }, 700);
+}
+
+$("tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b) { state.tab = b.dataset.tab; renderPanel(); }
+});
+
+window.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (t.closest && t.closest("button, input") && (e.key === "Enter" || e.key === " " || e.key.startsWith("Arrow"))) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const i = ORDER.indexOf(state.sel);
+    const j = e.key === "ArrowDown" ? (i + 1) % ORDER.length : (i <= 0 ? ORDER.length - 1 : i - 1);
+    select(ORDER[j]);
+    focusNode(ORDER[j]);
+  } else if (e.key === "Enter" && state.sel) {
+    select(state.sel, "inside");
+  } else if (e.key === "Escape") {
+    select(null);
+  } else if (e.key === " ") {
+    e.preventDefault();
+    $("b-run").click();
+  }
+});
+window.addEventListener("resize", resize);
+
+/* ------------------------------------------------------------------
+   Start
+   ------------------------------------------------------------------ */
+
+let saved = null;
+try { saved = localStorage.getItem("memsoc-map-theme"); } catch (e) { /* storage blocked */ }
+setPalette(saved || "midnight");
+setArm("self");
+renderPanel();
+resize();
+Object.assign(cam, VIEWS.iso());
+if (!STILL) {
+  /* a short sweep in, so it reads as 3D straight away */
+  Object.assign(cam, { yaw: HOME_YAW - 0.9, pitch: 1.05, dist: fitDist() * 1.55 });
+  flyTo(VIEWS.iso(), 1700);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
