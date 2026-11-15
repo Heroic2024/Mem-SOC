@@ -46,6 +46,7 @@ package under `src/memsoc/` and one directory here.
 | Browse every API endpoint in one place | `http://localhost:8080/api-docs` — see [`deployment/architecture.md`](./deployment/architecture.md) |
 | Understand the container topology and ports | [`deployment/architecture.md`](./deployment/architecture.md) |
 | See the end-to-end flow | [`architecture/end-to-end-pipeline.md`](./architecture/end-to-end-pipeline.md) |
+| **Explore the whole system as an interactive diagram (components, the three arms, results, open backlog rows per component)** | [`architecture/system-map.html`](./architecture/system-map.html) — open the file in a browser; a snapshot as of 2026-11-15 |
 | Understand the memory layer design | [`memory-layer/README.md`](./memory-layer/README.md) |
 | See the retrieval-quality charts (token fit, family match, thresholds) | [`../notebooks/retrieval-quality.ipynb`](../notebooks/retrieval-quality.ipynb) — run in the memory venv; PNGs land in `artifacts/figures/` |
 | Know what is broken or missing | [`PRODUCT_BACKLOG.md`](./PRODUCT_BACKLOG.md) |
@@ -76,6 +77,7 @@ docs/
 ├── PRODUCT_BACKLOG.md         central register of open work
 ├── architecture/              system-wide views
 │   ├── end-to-end-pipeline.md
+│   ├── system-map.html        interactive isometric map of the system (snapshot, 2026-11-15)
 │   └── diagrams/              rendered activity/flow/sequence/state diagrams
 ├── deployment/
 │   ├── operations.md          authoritative run guide
